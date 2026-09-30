@@ -30,13 +30,16 @@ import {
   Check
 } from 'lucide-react';
 import { KasTransaction, AsetTabungan, DebtRecord, TransactionType, DebtType } from './types/finance';
-import { 
-  loadTransactions, 
-  saveTransactions, 
-  loadAset, 
-  saveAset, 
+import {
+  loadTransactions,
+  saveTransactions,
+  deleteTransactionInSupabase,
+  loadAset,
+  saveAset,
+  deleteAsetInSupabase,
   loadDebts,
   saveDebts,
+  deleteDebtInSupabase,
   exportTransactionsCSV,
   exportAsetCSV,
   exportDebtsCSV
@@ -51,9 +54,9 @@ import { DebtPaymentModal } from './components/DebtPaymentModal';
 type ActiveViewTab = 'kas' | 'aset' | 'utang_piutang';
 
 export default function App() {
-  const [transactions, setTransactions] = useState<KasTransaction[]>(() => loadTransactions());
-  const [asetList, setAsetList] = useState<AsetTabungan[]>(() => loadAset());
-  const [debts, setDebts] = useState<DebtRecord[]>(() => loadDebts());
+  const [transactions, setTransactions] = useState<KasTransaction[]>([]);
+  const [asetList, setAsetList] = useState<AsetTabungan[]>([]);
+  const [debts, setDebts] = useState<DebtRecord[]>([]);
   
   // Navigation View Tab: 'kas' | 'aset' | 'utang_piutang'
   const [activeTab, setActiveTab] = useState<ActiveViewTab>('kas');
@@ -93,15 +96,35 @@ export default function App() {
 
   // Sync to localStorage
   useEffect(() => {
-    saveTransactions(transactions);
+  async function fetchData() {
+    const transactionsData = await loadTransactions();
+    const asetData = await loadAset();
+    const debtsData = await loadDebts();
+    
+    setTransactions(transactionsData);
+    setAsetList(asetData);
+    setDebts(debtsData);
+  }
+  fetchData();
+}, []);
+
+// Sync ke Supabase / Local Storage secara otomatis ketika state berubah
+  useEffect(() => {
+    if (transactions.length > 0) {
+      saveTransactions(transactions);
+    }
   }, [transactions]);
 
   useEffect(() => {
-    saveAset(asetList);
+    if (asetList.length > 0) {
+      saveAset(asetList);
+    }
   }, [asetList]);
 
   useEffect(() => {
-    saveDebts(debts);
+    if (debts.length > 0) {
+      saveDebts(debts);
+    }
   }, [debts]);
 
   // Unique list of months
@@ -273,46 +296,59 @@ export default function App() {
     setPrefilledAsetId(undefined);
   };
 
-  const handleDeleteTransaction = (id: string) => {
-    const txToDelete = transactions.find(t => t.id === id);
-    if (!txToDelete) return;
+  const handleDeleteTransaction = async (id: string) => {
+  const txToDelete = transactions.find(t => t.id === id);
+  if (!txToDelete) return;
 
-    if (txToDelete.jenis === 'pengeluaran' && txToDelete.masukKeAsetId) {
-      setAsetList(prevAset => {
-        return prevAset.map(aset => {
-          if (aset.id === txToDelete.masukKeAsetId) {
-            return {
-              ...aset,
-              nominal: Math.max(aset.nominal - txToDelete.nominal, 0),
-              updatedAt: Date.now()
-            };
-          }
-          return aset;
-        });
+  // 1. Hapus transaksi dari Supabase
+  await deleteTransactionInSupabase(id);
+
+  // 2. Kembalikan saldo tabungan jika transaksi masuk ke tabungan
+  if (txToDelete.jenis === 'pengeluaran' && txToDelete.masukKeAsetId) {
+    setAsetList(prevAset => {
+      return prevAset.map(aset => {
+        if (aset.id === txToDelete.masukKeAsetId) {
+          return {
+            ...aset,
+            nominal: Math.max(aset.nominal - txToDelete.nominal, 0),
+            updatedAt: Date.now()
+          };
+        }
+        return aset;
       });
-    }
+    });
+  }
 
-    if (txToDelete.terkaitDebtId) {
-      setDebts(prevDebts => {
-        return prevDebts.map(d => {
-          if (d.id === txToDelete.terkaitDebtId) {
-            const restoredSisa = Math.min(d.sisaNominal + txToDelete.nominal, d.totalNominal);
-            return {
-              ...d,
-              sisaNominal: restoredSisa,
-              status: (restoredSisa <= 0 ? 'lunas' : 'belum_lunas') as 'lunas' | 'belum_lunas',
-              riwayatPembayaran: (d.riwayatPembayaran || []).filter(p => p.kasTransactionId !== txToDelete.id),
-              updatedAt: Date.now()
-            };
-          }
-          return d;
-        });
+  // 3. Kembalikan sisa utang/piutang jika transaksi adalah pembayaran
+  if (txToDelete.terkaitDebtId) {
+    setDebts(prevDebts => {
+      return prevDebts.map(d => {
+        if (d.id === txToDelete.terkaitDebtId) {
+          const restoredSisa = Math.min(
+            d.sisaNominal + txToDelete.nominal,
+            d.totalNominal
+          );
+
+          return {
+            ...d,
+            sisaNominal: restoredSisa,
+            status: (restoredSisa <= 0 ? 'lunas' : 'belum_lunas') as 'lunas' | 'belum_lunas',
+            riwayatPembayaran: (d.riwayatPembayaran || []).filter(
+              p => p.kasTransactionId !== txToDelete.id
+            ),
+            updatedAt: Date.now()
+          };
+        }
+        return d;
       });
-    }
+    });
+  }
 
-    setTransactions(prev => prev.filter(t => t.id !== id));
-    setDeletingTxId(null);
-  };
+  // 4. Hapus dari state React
+  setTransactions(prev => prev.filter(t => t.id !== id));
+
+  setDeletingTxId(null);
+};
 
   // Aset CRUD Handlers
   const handleOpenCreateAset = () => {
@@ -338,10 +374,15 @@ export default function App() {
     });
   };
 
-  const handleDeleteAset = (id: string) => {
-    setAsetList(prev => prev.filter(a => a.id !== id));
-    setDeletingAsetId(null);
-  };
+  const handleDeleteAset = async (id: string) => {
+  // 1. Hapus dari Supabase
+  await deleteAsetInSupabase(id);
+
+  // 2. Hapus dari state React
+  setAsetList(prev => prev.filter(a => a.id !== id));
+
+  setDeletingAsetId(null);
+};
 
   // Utang & Piutang CRUD Handlers
   const handleOpenCreateDebt = (type: DebtType) => {
@@ -369,10 +410,15 @@ export default function App() {
     });
   };
 
-  const handleDeleteDebt = (id: string) => {
-    setDebts(prev => prev.filter(d => d.id !== id));
-    setDeletingDebtId(null);
-  };
+  const handleDeleteDebt = async (id: string) => {
+  // 1. Hapus utang/piutang dan pembayaran terkait dari Supabase
+  await deleteDebtInSupabase(id);
+
+  // 2. Hapus dari state React
+  setDebts(prev => prev.filter(d => d.id !== id));
+
+  setDeletingDebtId(null);
+};
 
   // CATAT PEMBAYARAN UTANG / PIUTANG (MENGURANGI / MENAMBAH KAS)
   const handleOpenPayment = (debt: DebtRecord) => {
