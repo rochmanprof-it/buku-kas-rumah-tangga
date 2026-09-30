@@ -1,6 +1,6 @@
 {
-  "name": "BukuKas - Pemasukan, Kas, Pengeluaran & Aset Tabungan",
-  "description": "Aplikasi pembukuan keuangan rumah tangga: kelola pemasukan, saldo kas, pengeluaran harian, serta pencatatan aset dan tabungan keluarga dengan CRUD lengkap.",
+  "name": "BukuKas - Kas, Tabungan, Utang & Piutang",
+  "description": "Aplikasi pembukuan keuangan rumah tangga: kelola kas, tabungan, aset, serta utang dan piutang terintegrasi otomatis dengan saldo kas.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

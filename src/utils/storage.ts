@@ -1,8 +1,9 @@
-import { KasTransaction, AsetTabungan } from '../types/finance';
-import { getDefaultTransactions, getDefaultAset } from '../data/defaultData';
+import { KasTransaction, AsetTabungan, DebtRecord } from '../types/finance';
+import { getDefaultTransactions, getDefaultAset, getDefaultDebts } from '../data/defaultData';
 
 const TRANSACTIONS_KEY = 'bukukas_sederhana_transactions_v2';
 const ASET_KEY = 'bukukas_aset_tabungan_v1';
+const DEBT_KEY = 'bukukas_utang_piutang_v1';
 
 export function loadTransactions(): KasTransaction[] {
   try {
@@ -44,18 +45,45 @@ export function saveAset(asetList: AsetTabungan[]): void {
   }
 }
 
+export function loadDebts(): DebtRecord[] {
+  try {
+    const raw = localStorage.getItem(DEBT_KEY);
+    if (!raw) return getDefaultDebts();
+    const data = JSON.parse(raw);
+    return Array.isArray(data) ? data : getDefaultDebts();
+  } catch (err) {
+    console.error('Failed to load debts:', err);
+    return getDefaultDebts();
+  }
+}
+
+export function saveDebts(debts: DebtRecord[]): void {
+  try {
+    localStorage.setItem(DEBT_KEY, JSON.stringify(debts));
+  } catch (err) {
+    console.error('Failed to save debts:', err);
+  }
+}
+
 export function exportTransactionsCSV(transactions: KasTransaction[]): void {
-  const headers = ['No', 'Tanggal', 'Jenis', 'Kategori', 'Nominal (Rp)', 'Metode Kas', 'Keterangan'];
+  const headers = ['No', 'Tanggal', 'Jenis', 'Kategori', 'Nominal (Rp)', 'Metode Kas', 'Keterangan', 'Info Khusus'];
   
-  const rows = transactions.map((t, index) => [
-    index + 1,
-    t.tanggal,
-    t.jenis === 'pemasukan' ? 'Pemasukan' : 'Pengeluaran',
-    `"${(t.kategori || '').replace(/"/g, '""')}"`,
-    t.nominal,
-    `"${(t.metodeKas || '').replace(/"/g, '""')}"`,
-    `"${(t.keterangan || '').replace(/"/g, '""')}"`
-  ]);
+  const rows = transactions.map((t, index) => {
+    let info = '';
+    if (t.masukKeAsetNama) info = `Masuk ke Tabungan: ${t.masukKeAsetNama}`;
+    if (t.terkaitDebtPihak) info = `${t.terkaitDebtTipe === 'utang' ? 'Bayar Utang ke' : 'Terima Piutang dari'}: ${t.terkaitDebtPihak}`;
+
+    return [
+      index + 1,
+      t.tanggal,
+      t.jenis === 'pemasukan' ? 'Pemasukan' : 'Pengeluaran',
+      `"${(t.kategori || '').replace(/"/g, '""')}"`,
+      t.nominal,
+      `"${(t.metodeKas || '').replace(/"/g, '""')}"`,
+      `"${(t.keterangan || '').replace(/"/g, '""')}"`,
+      `"${info.replace(/"/g, '""')}"`
+    ];
+  });
 
   const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
   const encodedUri = encodeURI(csvContent);
@@ -84,6 +112,31 @@ export function exportAsetCSV(asetList: AsetTabungan[]): void {
   const link = document.createElement('a');
   link.setAttribute('href', encodedUri);
   link.setAttribute('download', `daftar_aset_tabungan_${new Date().toISOString().slice(0, 10)}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+export function exportDebtsCSV(debts: DebtRecord[]): void {
+  const headers = ['No', 'Tipe', 'Pihak / Nama', 'Total Nominal (Rp)', 'Sisa (Rp)', 'Tanggal Mulai', 'Jatuh Tempo', 'Status', 'Keterangan'];
+
+  const rows = debts.map((d, index) => [
+    index + 1,
+    d.tipe === 'utang' ? 'Utang (Kita Bayar)' : 'Piutang (Kita Tagih)',
+    `"${(d.pihak || '').replace(/"/g, '""')}"`,
+    d.totalNominal,
+    d.sisaNominal,
+    d.tanggalMulai,
+    d.jatuhTempo || '-',
+    d.status === 'lunas' ? 'LUNAS' : 'BELUM LUNAS',
+    `"${(d.keterangan || '').replace(/"/g, '""')}"`
+  ]);
+
+  const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement('a');
+  link.setAttribute('href', encodedUri);
+  link.setAttribute('download', `daftar_utang_piutang_${new Date().toISOString().slice(0, 10)}.csv`);
   document.body.appendChild(link);
   link.click();
   link.remove();

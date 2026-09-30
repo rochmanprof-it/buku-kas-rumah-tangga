@@ -1,4 +1,4 @@
-import { KasTransaction, AsetTabungan } from '../types/finance';
+import { KasTransaction, AsetTabungan, DebtRecord } from '../types/finance';
 import { getCurrentMonthKey, getTodayDateString } from '../utils/formatters';
 
 export function getDefaultTransactions(): KasTransaction[] {
@@ -126,6 +126,70 @@ export function getDefaultAset(): AsetTabungan[] {
       institusi: 'Bank BCA',
       keterangan: 'Autodebet bulanan untuk persiapan biaya sekolah',
       updatedAt: Date.now() - 1 * 86400000
+    }
+  ];
+}
+
+export function getDefaultDebts(): DebtRecord[] {
+  const currentMonth = getCurrentMonthKey();
+
+  return [
+    {
+      id: 'dbt-1',
+      tipe: 'utang',
+      pihak: 'Cicilan Kendaraan / Leasing',
+      totalNominal: 10000000,
+      sisaNominal: 3500000,
+      tanggalMulai: `${currentMonth}-01`,
+      jatuhTempo: `${currentMonth}-28`,
+      status: 'belum_lunas',
+      keterangan: 'Sisa angsuran motor keluarga',
+      riwayatPembayaran: [
+        {
+          id: 'pay-1',
+          tanggal: `${currentMonth}-05`,
+          nominal: 1500000,
+          metodeKas: 'Bank Transfer',
+          keterangan: 'Angsuran bulan berjalan'
+        }
+      ],
+      createdAt: Date.now() - 30 * 86400000,
+      updatedAt: Date.now() - 20 * 86400000
+    },
+    {
+      id: 'dbt-2',
+      tipe: 'piutang',
+      pihak: 'Rudi (Teman Kantor)',
+      totalNominal: 2000000,
+      sisaNominal: 1200000,
+      tanggalMulai: `${currentMonth}-02`,
+      jatuhTempo: `${currentMonth}-30`,
+      status: 'belum_lunas',
+      keterangan: 'Pinjaman sementara untuk renovasi rumah',
+      riwayatPembayaran: [
+        {
+          id: 'pay-2',
+          tanggal: `${currentMonth}-15`,
+          nominal: 800000,
+          metodeKas: 'Bank Transfer',
+          keterangan: 'Cicilan pertama Rudi'
+        }
+      ],
+      createdAt: Date.now() - 28 * 86400000,
+      updatedAt: Date.now() - 15 * 86400000
+    },
+    {
+      id: 'dbt-3',
+      tipe: 'piutang',
+      pihak: 'Toko Berkah (Pesanan Kue)',
+      totalNominal: 600000,
+      sisaNominal: 600000,
+      tanggalMulai: `${currentMonth}-10`,
+      status: 'belum_lunas',
+      keterangan: 'Tagihan pesanan kue box arisan',
+      riwayatPembayaran: [],
+      createdAt: Date.now() - 15 * 86400000,
+      updatedAt: Date.now() - 15 * 86400000
     }
   ];
 }
