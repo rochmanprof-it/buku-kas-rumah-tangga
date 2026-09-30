@@ -27,10 +27,7 @@ import {
   HandCoins,
   BadgeAlert,
   Clock,
-  Check,
-  Database,
-  RefreshCw,
-  Settings
+  Check
 } from 'lucide-react';
 import { KasTransaction, AsetTabungan, DebtRecord, TransactionType, DebtType } from './types/finance';
 import { 
@@ -50,20 +47,6 @@ import { TransactionModal } from './components/TransactionModal';
 import { AsetModal } from './components/AsetModal';
 import { DebtModal } from './components/DebtModal';
 import { DebtPaymentModal } from './components/DebtPaymentModal';
-import { SettingsModal } from './components/SettingsModal';
-import { 
-  isSupabaseConfigured,
-  fetchTransactionsSupabase,
-  upsertTransactionSupabase,
-  deleteTransactionSupabase,
-  fetchAsetSupabase,
-  upsertAsetSupabase,
-  deleteAsetSupabase,
-  fetchDebtsSupabase,
-  upsertDebtSupabase,
-  insertPaymentSupabase,
-  deleteDebtSupabase
-} from './utils/supabase';
 
 type ActiveViewTab = 'kas' | 'aset' | 'utang_piutang';
 
@@ -74,11 +57,6 @@ export default function App() {
   
   // Navigation View Tab: 'kas' | 'aset' | 'utang_piutang'
   const [activeTab, setActiveTab] = useState<ActiveViewTab>('kas');
-
-  // Supabase & Settings State
-  const [isCloudConnected, setIsCloudConnected] = useState<boolean>(() => isSupabaseConfigured());
-  const [isSyncing, setIsSyncing] = useState<boolean>(false);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
 
   // Filters for Kas
   const [filterType, setFilterType] = useState<'semua' | 'pemasukan' | 'pengeluaran' | 'tabungan' | 'utang' | 'piutang'>('semua');
@@ -113,7 +91,7 @@ export default function App() {
   const [deletingAsetId, setDeletingAsetId] = useState<string | null>(null);
   const [deletingDebtId, setDeletingDebtId] = useState<string | null>(null);
 
-  // Sync to localStorage as backup
+  // Sync to localStorage
   useEffect(() => {
     saveTransactions(transactions);
   }, [transactions]);
@@ -125,41 +103,6 @@ export default function App() {
   useEffect(() => {
     saveDebts(debts);
   }, [debts]);
-
-  // Synchronize with Supabase Cloud
-  const syncWithSupabase = async () => {
-    if (!isSupabaseConfigured()) return;
-    setIsSyncing(true);
-    try {
-      const [cloudTx, cloudAset, cloudDebts] = await Promise.all([
-        fetchTransactionsSupabase(),
-        fetchAsetSupabase(),
-        fetchDebtsSupabase()
-      ]);
-
-      if (cloudTx) setTransactions(cloudTx);
-      if (cloudAset) setAsetList(cloudAset);
-      if (cloudDebts) setDebts(cloudDebts);
-    } catch (err) {
-      console.error('Error syncing with Supabase:', err);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  useEffect(() => {
-    if (isSupabaseConfigured()) {
-      syncWithSupabase();
-    }
-  }, []);
-
-  const handleSupabaseConnected = () => {
-    const configured = isSupabaseConfigured();
-    setIsCloudConnected(configured);
-    if (configured) {
-      syncWithSupabase();
-    }
-  };
 
   // Unique list of months
   const availableMonths = useMemo(() => {
@@ -297,7 +240,6 @@ export default function App() {
             nominal: Math.max(copyAset[oldTargetIndex].nominal - editingTransaction.nominal, 0),
             updatedAt: Date.now()
           };
-          if (isCloudConnected) upsertAsetSupabase(copyAset[oldTargetIndex]);
         }
       }
 
@@ -309,14 +251,13 @@ export default function App() {
             nominal: copyAset[newTargetIndex].nominal + savedTx.nominal,
             updatedAt: Date.now()
           };
-          if (isCloudConnected) upsertAsetSupabase(copyAset[newTargetIndex]);
         }
       }
 
       return copyAset;
     });
 
-    // 2. Simpan transaksi ke Buku Kas (Lokal & Supabase)
+    // 2. Simpan transaksi ke Buku Kas
     setTransactions(prev => {
       const index = prev.findIndex(t => t.id === savedTx.id);
       if (index >= 0) {
@@ -327,10 +268,6 @@ export default function App() {
         return [savedTx, ...prev];
       }
     });
-
-    if (isCloudConnected) {
-      upsertTransactionSupabase(savedTx);
-    }
 
     setEditingTransaction(null);
     setPrefilledAsetId(undefined);
@@ -344,13 +281,11 @@ export default function App() {
       setAsetList(prevAset => {
         return prevAset.map(aset => {
           if (aset.id === txToDelete.masukKeAsetId) {
-            const updated = {
+            return {
               ...aset,
               nominal: Math.max(aset.nominal - txToDelete.nominal, 0),
               updatedAt: Date.now()
             };
-            if (isCloudConnected) upsertAsetSupabase(updated);
-            return updated;
           }
           return aset;
         });
@@ -362,15 +297,13 @@ export default function App() {
         return prevDebts.map(d => {
           if (d.id === txToDelete.terkaitDebtId) {
             const restoredSisa = Math.min(d.sisaNominal + txToDelete.nominal, d.totalNominal);
-            const updated = {
+            return {
               ...d,
               sisaNominal: restoredSisa,
               status: (restoredSisa <= 0 ? 'lunas' : 'belum_lunas') as 'lunas' | 'belum_lunas',
               riwayatPembayaran: (d.riwayatPembayaran || []).filter(p => p.kasTransactionId !== txToDelete.id),
               updatedAt: Date.now()
             };
-            if (isCloudConnected) upsertDebtSupabase(updated);
-            return updated;
           }
           return d;
         });
@@ -378,9 +311,6 @@ export default function App() {
     }
 
     setTransactions(prev => prev.filter(t => t.id !== id));
-    if (isCloudConnected) {
-      deleteTransactionSupabase(id);
-    }
     setDeletingTxId(null);
   };
 
@@ -406,17 +336,10 @@ export default function App() {
         return [savedAset, ...prev];
       }
     });
-
-    if (isCloudConnected) {
-      upsertAsetSupabase(savedAset);
-    }
   };
 
   const handleDeleteAset = (id: string) => {
     setAsetList(prev => prev.filter(a => a.id !== id));
-    if (isCloudConnected) {
-      deleteAsetSupabase(id);
-    }
     setDeletingAsetId(null);
   };
 
@@ -444,17 +367,10 @@ export default function App() {
         return [savedDebt, ...prev];
       }
     });
-
-    if (isCloudConnected) {
-      upsertDebtSupabase(savedDebt);
-    }
   };
 
   const handleDeleteDebt = (id: string) => {
     setDebts(prev => prev.filter(d => d.id !== id));
-    if (isCloudConnected) {
-      deleteDebtSupabase(id);
-    }
     setDeletingDebtId(null);
   };
 
@@ -521,11 +437,6 @@ export default function App() {
       });
     });
 
-    if (isCloudConnected) {
-      upsertTransactionSupabase(newTx);
-      insertPaymentSupabase(debtId, paymentObj, newStatus);
-    }
-
     setActiveDebtForPayment(null);
   };
 
@@ -579,21 +490,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right Header: Quick Actions & Pengaturan */}
+          {/* Right Header: Quick Actions */}
           <div className="flex items-center gap-2">
-            
-            {/* Quick Refresh if Cloud Connected */}
-            {isCloudConnected && (
-              <button
-                onClick={syncWithSupabase}
-                disabled={isSyncing}
-                title="Tarik data terbaru dari cloud Supabase"
-                className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-emerald-600' : ''}`} />
-              </button>
-            )}
-
             <button
               onClick={() => handleOpenCreateTx('pemasukan')}
               className="px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
@@ -612,19 +510,12 @@ export default function App() {
               <span className="sm:hidden">+ Keluar</span>
             </button>
 
-            {/* Tombol Pengaturan Aplikasi & Database Supabase */}
             <button
-              onClick={() => setIsSettingsModalOpen(true)}
-              title="Pengaturan Aplikasi & Database"
-              className="p-2 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer relative flex items-center justify-center"
+              onClick={() => handleOpenCreateDebt('utang')}
+              className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer hidden md:flex items-center gap-1.5"
             >
-              <Settings className="w-4 h-4" />
-              {isCloudConnected && (
-                <span 
-                  title="Database Cloud Supabase Terhubung"
-                  className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white" 
-                />
-              )}
+              <HandCoins className="w-4 h-4 text-slate-600" />
+              <span>+ Utang/Piutang</span>
             </button>
           </div>
 
@@ -1500,9 +1391,8 @@ export default function App() {
             <span className="mx-2">·</span>
             <span>Kas Operasional, Tabungan & Aset, Utang dan Piutang Terintegrasi</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${isCloudConnected ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-            <span>{isCloudConnected ? 'Tersinkronisasi dengan Supabase Cloud' : 'Mode Offline (Penyimpanan Browser)'}</span>
+          <div>
+            Data tersimpan aman di browser (localStorage)
           </div>
         </div>
       </footer>
@@ -1547,17 +1437,6 @@ export default function App() {
         }}
         debt={activeDebtForPayment}
         onSavePayment={handleExecutePayment}
-      />
-
-      {/* Modal Pengaturan Aplikasi & Database Supabase */}
-      <SettingsModal
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-        onConnected={handleSupabaseConnected}
-        transactions={transactions}
-        asetList={asetList}
-        debts={debts}
-        onResetData={handleResetData}
       />
 
       {/* Dialog Konfirmasi Hapus Transaksi */}
