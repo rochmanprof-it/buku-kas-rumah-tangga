@@ -61,6 +61,9 @@ export interface AsetTabungan {
   nominal: number; // Nilai dalam Rupiah
   institusi?: string; // contoh: "Bank BCA", "BSI", "Pegadaian", "Ajaib"
   keterangan?: string;
+  beratGram?: number; // Berat dalam gram jika aset emas / logam mulia
+  hargaBeliPerGram?: number; // Harga beli per gram saat perolehan
+  tanggalBeli?: string; // Tanggal perolehan YYYY-MM-DD
   updatedAt: number;
 }
 

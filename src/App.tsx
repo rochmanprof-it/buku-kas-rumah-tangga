@@ -27,7 +27,9 @@ import {
   HandCoins,
   BadgeAlert,
   Clock,
-  Check
+  Check,
+  Tag,
+  X
 } from 'lucide-react';
 import { KasTransaction, AsetTabungan, DebtRecord, TransactionType, DebtType, AsetGroupType, isCashSavings } from './types/finance';
 import {
@@ -50,6 +52,7 @@ import { TransactionModal } from './components/TransactionModal';
 import { AsetModal } from './components/AsetModal';
 import { DebtModal } from './components/DebtModal';
 import { DebtPaymentModal } from './components/DebtPaymentModal';
+import { JualAsetModal, JualAsetSubmitPayload } from './components/JualAsetModal';
 
 type ActiveViewTab = 'kas' | 'aset' | 'utang_piutang';
 
@@ -83,6 +86,14 @@ export default function App() {
   // Modals for Aset CRUD
   const [isAsetModalOpen, setIsAsetModalOpen] = useState(false);
   const [editingAset, setEditingAset] = useState<AsetTabungan | null>(null);
+
+  // Modal for Jual Aset
+  const [isJualModalOpen, setIsJualModalOpen] = useState(false);
+  const [assetToSell, setAssetToSell] = useState<AsetTabungan | null>(null);
+  const [saleNotification, setSaleNotification] = useState<{
+    message: string;
+    type: 'untung' | 'rugi' | 'impas';
+  } | null>(null);
 
   // Modals for Utang & Piutang CRUD
   const [isDebtModalOpen, setIsDebtModalOpen] = useState(false);
@@ -395,14 +406,104 @@ export default function App() {
   };
 
   const handleDeleteAset = async (id: string) => {
-  // 1. Hapus dari Supabase
-  await deleteAsetInSupabase(id);
+    // 1. Hapus dari Supabase
+    await deleteAsetInSupabase(id);
 
-  // 2. Hapus dari state React
-  setAsetList(prev => prev.filter(a => a.id !== id));
+    // 2. Hapus dari state React
+    setAsetList(prev => prev.filter(a => a.id !== id));
 
-  setDeletingAsetId(null);
-};
+    setDeletingAsetId(null);
+  };
+
+  // Handler Jual Aset / Logam Mulia
+  const handleOpenJualAset = (aset: AsetTabungan) => {
+    setAssetToSell(aset);
+    setIsJualModalOpen(true);
+  };
+
+  const handleExecuteJualAset = async (payload: JualAsetSubmitPayload) => {
+    const {
+      aset,
+      hargaJual,
+      selisihUntungRugi,
+      persentaseUntungRugi,
+      tujuanHasil,
+      targetTabunganId,
+      targetTabunganNama,
+      tanggal,
+      metodeKas,
+      keteranganTambahan,
+      isJualSebagian,
+      sisaNilaiBukuAset,
+    } = payload;
+
+    const untungRugiText = selisihUntungRugi > 0
+      ? `Untung ${formatRupiah(selisihUntungRugi)} (+${persentaseUntungRugi.toFixed(1)}%)`
+      : selisihUntungRugi < 0
+      ? `Rugi ${formatRupiah(Math.abs(selisihUntungRugi))} (${persentaseUntungRugi.toFixed(1)}%)`
+      : 'Impas / Modal Balik';
+
+    const porsiDesc = isJualSebagian ? ' [Jual Sebagian]' : '';
+    const destDesc = tujuanHasil === 'tabungan' ? ` → Masuk ke ${targetTabunganNama || 'Tabungan'}` : ' → Masuk ke Kas';
+    const detailTambahan = keteranganTambahan ? ` (${keteranganTambahan})` : '';
+
+    const txKeterangan = `Hasil Jual ${aset.nama}${porsiDesc} · ${untungRugiText}${destDesc}${detailTambahan}`;
+
+    // 1. Catat transaksi pemasukan di buku kas
+    const newTx: KasTransaction = {
+      id: `tx-jual-${Date.now()}`,
+      tanggal,
+      jenis: 'pemasukan',
+      kategori: 'Penjualan Aset / Investasi',
+      nominal: hargaJual,
+      keterangan: txKeterangan,
+      metodeKas,
+      masukKeAsetId: tujuanHasil === 'tabungan' ? targetTabunganId : undefined,
+      masukKeAsetNama: tujuanHasil === 'tabungan' ? targetTabunganNama : undefined,
+      createdAt: Date.now(),
+    };
+
+    setTransactions(prev => [newTx, ...prev]);
+
+    // 2. Update atau lepas kepemilikan aset yang dijual
+    if (isJualSebagian && sisaNilaiBukuAset > 0) {
+      const updatedAset: AsetTabungan = {
+        ...aset,
+        nominal: sisaNilaiBukuAset,
+        updatedAt: Date.now(),
+      };
+      setAsetList(prev => prev.map(a => a.id === aset.id ? updatedAset : a));
+    } else {
+      await deleteAsetInSupabase(aset.id);
+      setAsetList(prev => prev.filter(a => a.id !== aset.id));
+    }
+
+    // 3. Jika hasil penjualan masuk ke pos tabungan cash tertentu
+    if (tujuanHasil === 'tabungan' && targetTabunganId) {
+      setAsetList(prev => {
+        return prev.map(a => {
+          if (a.id === targetTabunganId) {
+            return {
+              ...a,
+              nominal: a.nominal + hargaJual,
+              updatedAt: Date.now(),
+            };
+          }
+          return a;
+        });
+      });
+    }
+
+    // 4. Tampilkan pesan feedback notifikasi
+    setSaleNotification({
+      message: `Aset "${aset.nama}" berhasil dijual seharga ${formatRupiah(hargaJual)}! Realisasi: ${untungRugiText}. Hasil penjualan masuk ke ${tujuanHasil === 'tabungan' ? targetTabunganNama : 'Kas Operasional'}.`,
+      type: selisihUntungRugi > 0 ? 'untung' : selisihUntungRugi < 0 ? 'rugi' : 'impas',
+    });
+
+    setTimeout(() => {
+      setSaleNotification(null);
+    }, 7000);
+  };
 
   // Utang & Piutang CRUD Handlers
   const handleOpenCreateDebt = (type: DebtType) => {
@@ -612,6 +713,34 @@ export default function App() {
       {/* Main Container */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
         
+        {/* Banner Notifikasi Realisasi Penjualan Aset */}
+        {saleNotification && (
+          <div className={`p-4 rounded-xl border flex items-center justify-between gap-3 shadow-xs animate-fade-in ${
+            saleNotification.type === 'untung'
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+              : saleNotification.type === 'rugi'
+              ? 'bg-rose-50 border-rose-300 text-rose-900'
+              : 'bg-indigo-50 border-indigo-300 text-indigo-900'
+          }`}>
+            <div className="flex items-center gap-2.5">
+              <div className={`p-1.5 rounded-lg ${
+                saleNotification.type === 'untung' ? 'bg-emerald-200 text-emerald-800' : 'bg-rose-200 text-rose-800'
+              }`}>
+                <Tag className="w-4 h-4" />
+              </div>
+              <span className="text-xs font-semibold leading-relaxed">
+                {saleNotification.message}
+              </span>
+            </div>
+            <button
+              onClick={() => setSaleNotification(null)}
+              className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Title & View Switcher */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-200/80">
           <div>
@@ -1048,6 +1177,14 @@ export default function App() {
                                     <span>{tx.terkaitDebtTipe === 'utang' ? `Bayar Utang: ${tx.terkaitDebtPihak}` : `Terima Piutang: ${tx.terkaitDebtPihak}`}</span>
                                   </span>
                                 )}
+
+                                {/* Badge Penanda Hasil Jual Aset */}
+                                {tx.kategori?.includes('Penjualan Aset') && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded font-medium border bg-amber-50 text-amber-800 border-amber-200">
+                                    <Tag className="w-3 h-3 text-amber-600" />
+                                    <span>Hasil Jual Aset</span>
+                                  </span>
+                                )}
                               </div>
                             </td>
 
@@ -1427,8 +1564,15 @@ export default function App() {
                                 </div>
                               </div>
 
-                              {/* Action CRUD: Edit & Delete */}
+                              {/* Action CRUD: Jual, Edit & Delete */}
                               <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => handleOpenJualAset(aset)}
+                                  title="Jual aset ini (hitung untung/rugi)"
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                                >
+                                  <Tag className="w-3.5 h-3.5" />
+                                </button>
                                 <button
                                   onClick={() => handleOpenEditAset(aset)}
                                   title="Ubah data aset"
@@ -1461,14 +1605,25 @@ export default function App() {
                               </span>
                             </div>
 
-                            {/* Tombol Cepat: Beli / Tambah dari Kas */}
-                            <button
-                              onClick={() => handleOpenCreateTx('pengeluaran', aset.id)}
-                              className="px-3 py-1.5 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                            >
-                              <ArrowRight className="w-3.5 h-3.5 text-amber-700" />
-                              <span>+ Tambah dari Kas</span>
-                            </button>
+                            {/* Tombol Aksi: Jual Aset & Tambah dari Kas */}
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => handleOpenJualAset(aset)}
+                                className="px-3 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                                title="Jual aset ini, catat harga jual, realisasi untung/rugi, dan masukkan ke kas/tabungan"
+                              >
+                                <Tag className="w-3.5 h-3.5 text-rose-600" />
+                                <span>Jual Aset</span>
+                              </button>
+
+                              <button
+                                onClick={() => handleOpenCreateTx('pengeluaran', aset.id)}
+                                className="px-3 py-1.5 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                              >
+                                <ArrowRight className="w-3.5 h-3.5 text-amber-700" />
+                                <span>+ Tambah</span>
+                              </button>
+                            </div>
                           </div>
                         </div>
                       );
@@ -1810,6 +1965,18 @@ export default function App() {
         onSave={handleSaveAset}
         initialData={editingAset}
         defaultGroup={defaultAsetGroup}
+      />
+
+      {/* Modal Jual Aset / Realisasi Keuntungan */}
+      <JualAsetModal
+        isOpen={isJualModalOpen}
+        onClose={() => {
+          setIsJualModalOpen(false);
+          setAssetToSell(null);
+        }}
+        onConfirmJual={handleExecuteJualAset}
+        aset={assetToSell}
+        cashSavingsList={cashSavingsItems}
       />
 
       {/* Modal CRUD: Create & Update Utang / Piutang */}
