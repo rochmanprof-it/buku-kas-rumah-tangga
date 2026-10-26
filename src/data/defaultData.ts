@@ -105,6 +105,9 @@ export function getDefaultAset(): AsetTabungan[] {
       nama: 'Emas Batangan Antam (10 Gram)',
       kategori: 'emas',
       nominal: 13500000,
+      beratGram: 10,
+      hargaBeliPerGram: 1350000,
+      tanggalBeli: '2024-01-15',
       institusi: 'Brankas Pribadi',
       keterangan: 'Simpanan lindung nilai jangka panjang',
       updatedAt: Date.now() - 5 * 86400000

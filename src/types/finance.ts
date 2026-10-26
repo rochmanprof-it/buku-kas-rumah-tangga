@@ -1,6 +1,16 @@
 export type TransactionType = 'pemasukan' | 'pengeluaran';
 
-export type AsetKategori = 'tabungan' | 'investasi' | 'emas' | 'deposito' | 'properti' | 'lainnya';
+export type AsetKategori = 'tabungan' | 'deposito' | 'kas_fisik' | 'emas' | 'investasi' | 'properti' | 'lainnya';
+
+export type AsetGroupType = 'cash' | 'aset';
+
+export function isCashSavings(kategori: string): boolean {
+  return kategori === 'tabungan' || kategori === 'deposito' || kategori === 'kas_fisik';
+}
+
+export function getAsetGroupLabel(kategori: string): string {
+  return isCashSavings(kategori) ? 'Tabungan Cash' : 'Aset & Logam Mulia';
+}
 
 export type DebtType = 'utang' | 'piutang';
 
@@ -59,6 +69,8 @@ export interface KasSummary {
   totalPemasukan: number;
   totalPengeluaran: number;
   totalAset: number;
+  totalTabunganCash: number;
+  totalAsetLogamMulia: number;
   totalUtang: number;
   totalPiutang: number;
 }

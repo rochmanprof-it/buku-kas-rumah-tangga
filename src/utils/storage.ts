@@ -1,4 +1,4 @@
-import { KasTransaction, AsetTabungan, DebtRecord } from '../types/finance';
+import { KasTransaction, AsetTabungan, DebtRecord, isCashSavings } from '../types/finance';
 import { getDefaultTransactions, getDefaultAset, getDefaultDebts } from '../data/defaultData';
 import { supabase } from './supabase';
 
@@ -306,9 +306,10 @@ export function exportTransactionsCSV(transactions: KasTransaction[]): void {
 }
 
 export function exportAsetCSV(asetList: AsetTabungan[]): void {
-  const headers = ['No', 'Nama Aset / Tabungan', 'Kategori', 'Nominal (Rp)', 'Institusi / Tempat Simpan', 'Keterangan'];
+  const headers = ['No', 'Kelompok', 'Nama Aset / Tabungan', 'Kategori', 'Nominal (Rp)', 'Institusi / Tempat Simpan', 'Keterangan'];
   const rows = asetList.map((a, index) => [
     index + 1,
+    isCashSavings(a.kategori) ? 'Tabungan Cash' : 'Aset & Logam Mulia',
     `"${(a.nama || '').replace(/"/g, '""')}"`,
     a.kategori,
     a.nominal,

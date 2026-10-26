@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, ArrowUpRight, ArrowDownRight, PiggyBank } from 'lucide-react';
-import { KasTransaction, TransactionType, AsetTabungan } from '../types/finance';
+import { KasTransaction, TransactionType, AsetTabungan, isCashSavings } from '../types/finance';
 import { getTodayDateString, formatRupiah } from '../utils/formatters';
 
 interface TransactionModalProps {
@@ -297,11 +297,24 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                     onChange={(e) => setTargetAsetId(e.target.value)}
                     className="w-full px-3 py-2 text-xs bg-white border border-indigo-300 rounded-lg text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
                   >
-                    {asetList.map(a => (
-                      <option key={a.id} value={a.id}>
-                        {a.nama} ({formatRupiah(a.nominal)}) · {a.institusi || a.kategori}
-                      </option>
-                    ))}
+                    {asetList.filter(a => isCashSavings(a.kategori)).length > 0 && (
+                      <optgroup label="💵 Tabungan Cash & Rekening Bank">
+                        {asetList.filter(a => isCashSavings(a.kategori)).map(a => (
+                          <option key={a.id} value={a.id}>
+                            {a.nama} ({formatRupiah(a.nominal)}) · {a.institusi || 'Bank'}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {asetList.filter(a => !isCashSavings(a.kategori)).length > 0 && (
+                      <optgroup label="🪙 Aset & Logam Mulia / Investasi">
+                        {asetList.filter(a => !isCashSavings(a.kategori)).map(a => (
+                          <option key={a.id} value={a.id}>
+                            {a.nama} ({formatRupiah(a.nominal)}) · {a.institusi || a.kategori}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
 
                   {targetAsetObj && parsedNominal > 0 && (

@@ -29,7 +29,7 @@ import {
   Clock,
   Check
 } from 'lucide-react';
-import { KasTransaction, AsetTabungan, DebtRecord, TransactionType, DebtType } from './types/finance';
+import { KasTransaction, AsetTabungan, DebtRecord, TransactionType, DebtType, AsetGroupType, isCashSavings } from './types/finance';
 import {
   loadTransactions,
   saveTransactions,
@@ -75,6 +75,10 @@ export default function App() {
   const [editingTransaction, setEditingTransaction] = useState<KasTransaction | null>(null);
   const [defaultModalType, setDefaultModalType] = useState<TransactionType>('pengeluaran');
   const [prefilledAsetId, setPrefilledAsetId] = useState<string | undefined>(undefined);
+
+  // Filters & State for Aset & Tabungan
+  const [asetFilter, setAsetFilter] = useState<'semua' | 'cash' | 'aset'>('semua');
+  const [defaultAsetGroup, setDefaultAsetGroup] = useState<AsetGroupType>('cash');
 
   // Modals for Aset CRUD
   const [isAsetModalOpen, setIsAsetModalOpen] = useState(false);
@@ -165,10 +169,24 @@ export default function App() {
       .reduce((sum, t) => sum + t.nominal, 0);
   }, [calculationDataset]);
 
-  // 2. Total Aset & Tabungan
-  const totalAset = useMemo(() => {
-    return asetList.reduce((sum, a) => sum + a.nominal, 0);
+  // 2. Pemisahan Tabungan Cash vs Aset & Logam Mulia
+  const cashSavingsItems = useMemo(() => {
+    return asetList.filter(a => isCashSavings(a.kategori));
   }, [asetList]);
+
+  const physicalAssetsItems = useMemo(() => {
+    return asetList.filter(a => !isCashSavings(a.kategori));
+  }, [asetList]);
+
+  const totalTabunganCash = useMemo(() => {
+    return cashSavingsItems.reduce((sum, a) => sum + a.nominal, 0);
+  }, [cashSavingsItems]);
+
+  const totalAsetLogamMulia = useMemo(() => {
+    return physicalAssetsItems.reduce((sum, a) => sum + a.nominal, 0);
+  }, [physicalAssetsItems]);
+
+  const totalAset = totalTabunganCash + totalAsetLogamMulia;
 
   // 3. Total Utang (Kewajiban belum dibayar)
   const totalSisaUtang = useMemo(() => {
@@ -350,14 +368,16 @@ export default function App() {
   setDeletingTxId(null);
 };
 
-  // Aset CRUD Handlers
-  const handleOpenCreateAset = () => {
+  // Aset & Tabungan CRUD Handlers
+  const handleOpenCreateAset = (group: AsetGroupType = 'cash') => {
     setEditingAset(null);
+    setDefaultAsetGroup(group);
     setIsAsetModalOpen(true);
   };
 
   const handleOpenEditAset = (aset: AsetTabungan) => {
     setEditingAset(aset);
+    setDefaultAsetGroup(isCashSavings(aset.kategori) ? 'cash' : 'aset');
     setIsAsetModalOpen(true);
   };
 
@@ -502,15 +522,36 @@ export default function App() {
   const getAsetIcon = (kategori: string) => {
     switch (kategori) {
       case 'emas':
-        return <Coins className="w-5 h-5 text-amber-600" />;
+        return <Coins className="w-5 h-5 text-amber-500" />;
       case 'investasi':
         return <TrendingUp className="w-5 h-5 text-emerald-600" />;
       case 'deposito':
         return <Landmark className="w-5 h-5 text-blue-600" />;
+      case 'kas_fisik':
+        return <Wallet className="w-5 h-5 text-emerald-600" />;
       case 'properti':
         return <Building className="w-5 h-5 text-purple-600" />;
       default:
         return <PiggyBank className="w-5 h-5 text-indigo-600" />;
+    }
+  };
+
+  const getAsetKategoriLabel = (kategori: string) => {
+    switch (kategori) {
+      case 'emas':
+        return 'Logam Mulia / Emas';
+      case 'investasi':
+        return 'Investasi / Pasar Modal';
+      case 'deposito':
+        return 'Deposito Bank';
+      case 'kas_fisik':
+        return 'Kas Tunai Simpanan';
+      case 'properti':
+        return 'Properti & Tanah';
+      case 'tabungan':
+        return 'Tabungan Bank';
+      default:
+        return 'Aset Lainnya';
     }
   };
 
@@ -626,114 +667,142 @@ export default function App() {
           </div>
         </div>
 
-        {/* 4 Main Financial KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* 5 Main Financial KPI Cards (Memisahkan Tabungan Cash vs Aset Logam Mulia) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
           
           {/* 1. Saldo Kas Operasional */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between">
+          <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                  Saldo Kas Operasional
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                  Kas Operasional
                 </span>
-                <div className={`p-2 rounded-lg ${saldoKas >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                <div className={`p-1.5 rounded-lg ${saldoKas >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
                   <Wallet className="w-4 h-4" />
                 </div>
               </div>
               
-              <div className={`text-2xl font-bold font-mono tracking-tight ${saldoKas >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
+              <div className={`text-xl font-bold font-mono tracking-tight ${saldoKas >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
                 {formatRupiah(saldoKas)}
               </div>
             </div>
 
-            <div className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
-              <span>Uang kas harian</span>
-              <span className="font-semibold text-slate-700 text-[11px]">
+            <div className="text-[11px] text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+              <span>Kas harian</span>
+              <span className={`font-semibold ${saldoKas >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
                 {saldoKas >= 0 ? 'Kas Ada' : 'Defisit'}
               </span>
             </div>
           </div>
 
-          {/* 2. Total Tabungan & Aset */}
-          <div className="bg-white border border-indigo-200/80 rounded-xl p-5 shadow-xs flex flex-col justify-between relative overflow-hidden">
+          {/* 2. Tabungan Cash / Bank (Likuid) */}
+          <div className="bg-white border border-indigo-200/80 rounded-xl p-4 shadow-xs flex flex-col justify-between relative overflow-hidden">
             <div>
               <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-indigo-900">
-                  Total Tabungan & Aset
+                <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-900 flex items-center gap-1">
+                  <span>Tabungan Cash</span>
                 </span>
-                <div className="p-2 bg-indigo-50 text-indigo-700 rounded-lg">
+                <div className="p-1.5 bg-indigo-50 text-indigo-700 rounded-lg">
                   <PiggyBank className="w-4 h-4" />
                 </div>
               </div>
               
-              <div className="text-2xl font-bold font-mono text-indigo-900 tracking-tight">
-                {formatRupiah(totalAset)}
+              <div className="text-xl font-bold font-mono text-indigo-900 tracking-tight">
+                {formatRupiah(totalTabunganCash)}
               </div>
             </div>
 
-            <div className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
-              <span>{asetList.length} Pos Simpanan</span>
+            <div className="text-[11px] text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+              <span>{cashSavingsItems.length} Pos Rekening</span>
               <button 
-                onClick={() => setActiveTab('aset')}
-                className="font-semibold text-indigo-600 hover:text-indigo-800 text-[11px] cursor-pointer"
+                onClick={() => { setActiveTab('aset'); setAsetFilter('cash'); }}
+                className="font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
               >
                 Lihat →
               </button>
             </div>
           </div>
 
-          {/* 3. Sisa Utang Kita (Kewajiban) */}
-          <div className="bg-white border border-rose-200/80 rounded-xl p-5 shadow-xs flex flex-col justify-between">
+          {/* 3. Aset & Logam Mulia */}
+          <div className="bg-white border border-amber-200/90 rounded-xl p-4 shadow-xs flex flex-col justify-between relative overflow-hidden bg-gradient-to-br from-white via-white to-amber-50/30">
             <div>
               <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-rose-900">
-                  Sisa Utang Kita
+                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1">
+                  <span>Aset & Logam Mulia</span>
                 </span>
-                <div className="p-2 bg-rose-50 text-rose-700 rounded-lg">
-                  <ArrowDownRight className="w-4 h-4" />
+                <div className="p-1.5 bg-amber-50 text-amber-700 rounded-lg">
+                  <Coins className="w-4 h-4" />
                 </div>
               </div>
               
-              <div className="text-2xl font-bold font-mono text-rose-600 tracking-tight">
-                {formatRupiah(totalSisaUtang)}
+              <div className="text-xl font-bold font-mono text-amber-900 tracking-tight">
+                {formatRupiah(totalAsetLogamMulia)}
               </div>
             </div>
 
-            <div className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
-              <span>Kewajiban harus dibayar</span>
+            <div className="text-[11px] text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+              <span>{physicalAssetsItems.length} Pos Emas/Investasi</span>
               <button 
-                onClick={() => { setActiveTab('utang_piutang'); setDebtFilter('utang'); }}
-                className="font-semibold text-rose-600 hover:text-rose-800 text-[11px] cursor-pointer"
+                onClick={() => { setActiveTab('aset'); setAsetFilter('aset'); }}
+                className="font-semibold text-amber-700 hover:text-amber-900 cursor-pointer"
               >
-                Bayar Utang →
+                Lihat →
               </button>
             </div>
           </div>
 
-          {/* 4. Sisa Piutang (Hak Tagih Kita) */}
-          <div className="bg-white border border-emerald-200/80 rounded-xl p-5 shadow-xs flex flex-col justify-between">
+          {/* 4. Sisa Utang Kita (Kewajiban) */}
+          <div className="bg-white border border-rose-200/80 rounded-xl p-4 shadow-xs flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-emerald-900">
-                  Sisa Piutang (Tagihan)
+                <span className="text-[11px] font-bold uppercase tracking-wider text-rose-900">
+                  Sisa Utang Kita
                 </span>
-                <div className="p-2 bg-emerald-50 text-emerald-700 rounded-lg">
+                <div className="p-1.5 bg-rose-50 text-rose-700 rounded-lg">
+                  <ArrowDownRight className="w-4 h-4" />
+                </div>
+              </div>
+              
+              <div className="text-xl font-bold font-mono text-rose-600 tracking-tight">
+                {formatRupiah(totalSisaUtang)}
+              </div>
+            </div>
+
+            <div className="text-[11px] text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+              <span>Kewajiban bayar</span>
+              <button 
+                onClick={() => { setActiveTab('utang_piutang'); setDebtFilter('utang'); }}
+                className="font-semibold text-rose-600 hover:text-rose-800 cursor-pointer"
+              >
+                Bayar →
+              </button>
+            </div>
+          </div>
+
+          {/* 5. Sisa Piutang (Hak Tagih Kita) */}
+          <div className="bg-white border border-emerald-200/80 rounded-xl p-4 shadow-xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between text-slate-500 mb-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-900">
+                  Sisa Piutang
+                </span>
+                <div className="p-1.5 bg-emerald-50 text-emerald-700 rounded-lg">
                   <ArrowUpRight className="w-4 h-4" />
                 </div>
               </div>
               
-              <div className="text-2xl font-bold font-mono text-emerald-600 tracking-tight">
+              <div className="text-xl font-bold font-mono text-emerald-600 tracking-tight">
                 {formatRupiah(totalSisaPiutang)}
               </div>
             </div>
 
-            <div className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
+            <div className="text-[11px] text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between">
               <span>Uang di pihak lain</span>
               <button 
                 onClick={() => { setActiveTab('utang_piutang'); setDebtFilter('piutang'); }}
-                className="font-semibold text-emerald-600 hover:text-emerald-800 text-[11px] cursor-pointer"
+                className="font-semibold text-emerald-600 hover:text-emerald-800 cursor-pointer"
               >
-                Terima Piutang →
+                Terima →
               </button>
             </div>
           </div>
@@ -1028,125 +1097,402 @@ export default function App() {
           </div>
         )}
 
-        {/* VIEW 2: DAFTAR ASET & TABUNGAN */}
+        {/* VIEW 2: DAFTAR ASET & TABUNGAN (TERPISAH ANTARA TABUNGAN CASH VS ASET LOGAM MULIA) */}
         {activeTab === 'aset' && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             
-            {/* Header Kontrol Aset */}
-            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">
-                  Total Portofolio Tabungan & Aset: <span className="font-mono text-indigo-700">{formatRupiah(totalAset)}</span>
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Setiap kali ada pengeluaran dialokasikan ke tabungan, saldo pos tabungan di bawah otomatis bertambah.
-                </p>
+            {/* Header Kontrol & Portofolio Summary */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Total Portofolio Gabungan
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                      {asetList.length} Total Pos
+                    </span>
+                  </div>
+                  <div className="text-2xl sm:text-3xl font-bold font-mono text-slate-900 tracking-tight mt-1">
+                    {formatRupiah(totalAset)}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Simpanan uang kas cair dan aset bernilai jangka panjang keluarga tercatat terpisah secara rapi.
+                  </p>
+                </div>
+
+                {/* Sub-Ringkasan & Tombol Tambah Spesifik */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => handleOpenCreateAset('cash')}
+                    className="px-3.5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ Tabungan Cash</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleOpenCreateAset('aset')}
+                    className="px-3.5 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Coins className="w-4 h-4" />
+                    <span>+ Logam Mulia / Aset</span>
+                  </button>
+
+                  <button
+                    onClick={() => exportAsetCSV(asetList)}
+                    className="px-3 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-600" />
+                    <span className="hidden sm:inline">Ekspor CSV</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => exportAsetCSV(asetList)}
-                  className="px-3 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shrink-0"
-                >
-                  <Download className="w-3.5 h-3.5 text-slate-600" />
-                  <span>Ekspor CSV</span>
-                </button>
+              {/* Sub-Total Chips & Tab Filter */}
+              <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                
+                {/* Segmented Filter */}
+                <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl self-start sm:self-auto border border-slate-200/60 overflow-x-auto">
+                  <button
+                    onClick={() => setAsetFilter('semua')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+                      asetFilter === 'semua'
+                        ? 'bg-white text-slate-900 shadow-xs font-semibold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Semua Pos ({asetList.length})
+                  </button>
 
-                <button
-                  onClick={handleOpenCreateAset}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>+ Pos Tabungan Baru</span>
-                </button>
+                  <button
+                    onClick={() => setAsetFilter('cash')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                      asetFilter === 'cash'
+                        ? 'bg-white text-indigo-900 shadow-xs font-semibold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <PiggyBank className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Tabungan Cash ({cashSavingsItems.length})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setAsetFilter('aset')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                      asetFilter === 'aset'
+                        ? 'bg-white text-amber-900 shadow-xs font-semibold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Coins className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Aset & Logam Mulia ({physicalAssetsItems.length})</span>
+                  </button>
+                </div>
+
+                {/* Ringkasan Subtotal Cepat */}
+                <div className="flex items-center gap-3 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 shrink-0" />
+                    <span className="text-slate-500">Cash:</span>
+                    <strong className="font-mono text-indigo-900 font-bold">{formatRupiah(totalTabunganCash)}</strong>
+                  </div>
+                  <span className="text-slate-300">|</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
+                    <span className="text-slate-500">Aset/Emas:</span>
+                    <strong className="font-mono text-amber-900 font-bold">{formatRupiah(totalAsetLogamMulia)}</strong>
+                  </div>
+                </div>
+
               </div>
             </div>
 
-            {/* Grid Kartu Aset / Tabungan */}
-            {asetList.length === 0 ? (
-              <div className="bg-white border border-slate-200 rounded-xl py-16 text-center shadow-xs">
-                <PiggyBank className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                <h3 className="text-sm font-semibold text-slate-800">Belum ada pos tabungan atau aset tercatat</h3>
-                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                  Buat pos tabungan darurat, tabungan pendidikan, emas, atau deposito keluarga Anda.
-                </p>
-                <button
-                  onClick={handleOpenCreateAset}
-                  className="mt-4 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors cursor-pointer"
-                >
-                  + Tambah Pos Tabungan Pertama
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {asetList.map((aset) => {
-                  return (
-                    <div 
-                      key={aset.id}
-                      className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs hover:border-indigo-200 transition-colors flex flex-col justify-between"
+            {/* ========================================================================= */}
+            {/* BAGIAN 1: TABUNGAN CASH & REKENING BANK (LIKUID)                          */}
+            {/* ========================================================================= */}
+            {(asetFilter === 'semua' || asetFilter === 'cash') && (
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-indigo-50 text-indigo-700 rounded-lg">
+                      <PiggyBank className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                        <span>Tabungan Cash & Rekening Bank</span>
+                        <span className="text-[10px] font-semibold px-2 py-0.2 rounded-full bg-indigo-100 text-indigo-800">
+                          {cashSavingsItems.length} Pos
+                        </span>
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        Uang simpanan likuid: tabungan dana darurat, rekening harian, deposito, dan kas simpanan.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <span className="text-xs font-mono font-bold text-indigo-900 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200/60">
+                      Total: {formatRupiah(totalTabunganCash)}
+                    </span>
+                    <button
+                      onClick={() => handleOpenCreateAset('cash')}
+                      className="text-xs font-semibold text-indigo-700 hover:text-indigo-800 hover:underline cursor-pointer flex items-center gap-1"
                     >
-                      <div>
-                        <div className="flex items-start justify-between gap-3 mb-2">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2.5 bg-slate-50 border border-slate-100 rounded-xl">
-                              {getAsetIcon(aset.kategori)}
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Tambah Pos Cash</span>
+                    </button>
+                  </div>
+                </div>
+
+                {cashSavingsItems.length === 0 ? (
+                  <div className="bg-white border border-dashed border-indigo-200 rounded-xl p-8 text-center shadow-xs">
+                    <PiggyBank className="w-9 h-9 text-indigo-300 mx-auto mb-2" />
+                    <h4 className="text-xs font-bold text-slate-800">Belum ada pos tabungan cash</h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5 max-w-sm mx-auto">
+                      Catat rekening bank (BCA, Mandiri, BSI), tabungan dana darurat, atau deposito keluarga Anda.
+                    </p>
+                    <button
+                      onClick={() => handleOpenCreateAset('cash')}
+                      className="mt-3 px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors cursor-pointer"
+                    >
+                      + Tambah Tabungan Cash
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    {cashSavingsItems.map((aset) => {
+                      return (
+                        <div 
+                          key={aset.id}
+                          className="bg-white border border-indigo-100/90 hover:border-indigo-300 rounded-xl p-4 shadow-xs hover:shadow-sm transition-all flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="flex items-start justify-between gap-3 mb-2">
+                              <div className="flex items-center gap-2.5">
+                                <div className="p-2 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-100">
+                                  {getAsetIcon(aset.kategori)}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <h4 className="text-sm font-bold text-slate-900 leading-snug">{aset.nama}</h4>
+                                    <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200/50">
+                                      {getAsetKategoriLabel(aset.kategori)}
+                                    </span>
+                                  </div>
+                                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                                    Institusi: <strong>{aset.institusi || 'Bank'}</strong>
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Action CRUD: Edit & Delete */}
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => handleOpenEditAset(aset)}
+                                  title="Ubah data tabungan"
+                                  className="p-1.5 text-slate-400 hover:text-indigo-700 hover:bg-indigo-50 rounded-md transition-colors cursor-pointer"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => setDeletingAsetId(aset.id)}
+                                  title="Hapus pos tabungan"
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
+
+                            {aset.keterangan && (
+                              <p className="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg my-1.5 border border-slate-100 leading-relaxed text-[11px]">
+                                💡 {aset.keterangan}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
                             <div>
-                              <h4 className="text-sm font-bold text-slate-900 leading-snug">{aset.nama}</h4>
-                              <span className="text-[11px] text-slate-400 block mt-0.5">
-                                {aset.institusi || 'Penyimpanan Pribadi'} · Kategori: {aset.kategori}
+                              <span className="text-[10px] text-slate-400 block">Saldo Tabungan:</span>
+                              <span className="text-lg font-bold font-mono text-indigo-900">
+                                {formatRupiah(aset.nominal)}
                               </span>
                             </div>
-                          </div>
 
-                          {/* Action CRUD: Edit & Delete */}
-                          <div className="flex items-center gap-1">
+                            {/* Tombol Cepat: Setor Uang dari Kas */}
                             <button
-                              onClick={() => handleOpenEditAset(aset)}
-                              title="Ubah data tabungan (Edit)"
-                              className="p-1.5 text-slate-400 hover:text-indigo-700 hover:bg-indigo-50 rounded-md transition-colors cursor-pointer"
+                              onClick={() => handleOpenCreateTx('pengeluaran', aset.id)}
+                              className="px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
                             >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => setDeletingAsetId(aset.id)}
-                              title="Hapus pos tabungan (Delete)"
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <ArrowRight className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>+ Setor dari Kas</span>
                             </button>
                           </div>
                         </div>
-
-                        {aset.keterangan && (
-                          <p className="text-xs text-slate-500 bg-slate-50 p-2.5 rounded-lg my-2 border border-slate-100/80 leading-relaxed">
-                            💡 {aset.keterangan}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
-                        <div>
-                          <span className="text-xs text-slate-400 block text-[11px]">Saldo Tabungan:</span>
-                          <span className="text-lg font-bold font-mono text-indigo-700">
-                            {formatRupiah(aset.nominal)}
-                          </span>
-                        </div>
-
-                        {/* Tombol Cepat: Setor Uang dari Kas ke Tabungan Ini */}
-                        <button
-                          onClick={() => handleOpenCreateTx('pengeluaran', aset.id)}
-                          className="px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                        >
-                          <ArrowRight className="w-3.5 h-3.5 text-indigo-600" />
-                          <span>+ Setor dari Kas</span>
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
+
+            {/* ========================================================================= */}
+            {/* BAGIAN 2: ASET, LOGAM MULIA & INVESTASI (ASET BERNILAI NON-KAS)          */}
+            {/* ========================================================================= */}
+            {(asetFilter === 'semua' || asetFilter === 'aset') && (
+              <div className="space-y-3 pt-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-amber-50 text-amber-700 rounded-lg">
+                      <Coins className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                        <span>Aset, Logam Mulia & Investasi</span>
+                        <span className="text-[10px] font-semibold px-2 py-0.2 rounded-full bg-amber-100 text-amber-900">
+                          {physicalAssetsItems.length} Pos
+                        </span>
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        Kekayaan fisik & investasi: emas batangan Antam, perhiasan, reksadana, saham, dan properti.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <span className="text-xs font-mono font-bold text-amber-900 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200/60">
+                      Total: {formatRupiah(totalAsetLogamMulia)}
+                    </span>
+                    <button
+                      onClick={() => handleOpenCreateAset('aset')}
+                      className="text-xs font-semibold text-amber-700 hover:text-amber-800 hover:underline cursor-pointer flex items-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Tambah Logam Mulia / Aset</span>
+                    </button>
+                  </div>
+                </div>
+
+                {physicalAssetsItems.length === 0 ? (
+                  <div className="bg-white border border-dashed border-amber-200 rounded-xl p-8 text-center shadow-xs">
+                    <Coins className="w-9 h-9 text-amber-300 mx-auto mb-2" />
+                    <h4 className="text-xs font-bold text-slate-800">Belum ada pos logam mulia atau aset</h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5 max-w-sm mx-auto">
+                      Catat kepemilikan emas Antam, perhiasan, portofolio investasi reksadana/saham, atau properti keluarga.
+                    </p>
+                    <button
+                      onClick={() => handleOpenCreateAset('aset')}
+                      className="mt-3 px-3.5 py-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors cursor-pointer"
+                    >
+                      + Tambah Logam Mulia / Aset
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    {physicalAssetsItems.map((aset) => {
+                      const isEmas = aset.kategori === 'emas';
+                      const isInvestasi = aset.kategori === 'investasi';
+                      const isProperti = aset.kategori === 'properti';
+
+                      return (
+                        <div 
+                          key={aset.id}
+                          className="bg-white border border-amber-100/90 hover:border-amber-300 rounded-xl p-4 shadow-xs hover:shadow-sm transition-all flex flex-col justify-between bg-gradient-to-br from-white to-amber-50/20"
+                        >
+                          <div>
+                            <div className="flex items-start justify-between gap-3 mb-2">
+                              <div className="flex items-center gap-2.5">
+                                <div className="p-2 bg-amber-50 text-amber-600 rounded-xl border border-amber-100">
+                                  {getAsetIcon(aset.kategori)}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <h4 className="text-sm font-bold text-slate-900 leading-snug">{aset.nama}</h4>
+                                    <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded border ${
+                                      isEmas 
+                                        ? 'bg-amber-50 text-amber-800 border-amber-200' 
+                                        : isInvestasi 
+                                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                                          : isProperti 
+                                            ? 'bg-purple-50 text-purple-800 border-purple-200' 
+                                            : 'bg-slate-50 text-slate-700 border-slate-200'
+                                    }`}>
+                                      {getAsetKategoriLabel(aset.kategori)}
+                                    </span>
+                                  </div>
+                                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                                    Tempat Simpan: <strong>{aset.institusi || 'Brankas Pribadi'}</strong>
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Action CRUD: Edit & Delete */}
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => handleOpenEditAset(aset)}
+                                  title="Ubah data aset"
+                                  className="p-1.5 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded-md transition-colors cursor-pointer"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => setDeletingAsetId(aset.id)}
+                                  title="Hapus aset"
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {aset.keterangan && (
+                              <p className="text-xs text-slate-600 bg-amber-50/50 p-2 rounded-lg my-1.5 border border-amber-100/70 leading-relaxed text-[11px]">
+                                🪙 {aset.keterangan}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+                            <div>
+                              <span className="text-[10px] text-slate-400 block">Nilai Taksiran / Pasar:</span>
+                              <span className="text-lg font-bold font-mono text-amber-900">
+                                {formatRupiah(aset.nominal)}
+                              </span>
+                            </div>
+
+                            {/* Tombol Cepat: Beli / Tambah dari Kas */}
+                            <button
+                              onClick={() => handleOpenCreateTx('pengeluaran', aset.id)}
+                              className="px-3 py-1.5 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                            >
+                              <ArrowRight className="w-3.5 h-3.5 text-amber-700" />
+                              <span>+ Tambah dari Kas</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Banner Penjelasan Pemisahan Kas vs Logam Mulia */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-600 leading-relaxed flex items-start gap-3">
+              <div className="p-2 bg-white border border-slate-200 rounded-lg text-slate-700 shrink-0">
+                <Sparkles className="w-4 h-4 text-amber-500" />
+              </div>
+              <div>
+                <span className="font-bold text-slate-800 block mb-0.5">
+                  Mengapa Tabungan Cash dan Aset Logam Mulia Dipisahkan?
+                </span>
+                <span>
+                  • <strong>Tabungan Cash</strong> adalah dana likuid yang dapat ditarik sewaktu-waktu tanpa risiko fluktuasi harga (misalnya dana darurat di bank BCA/BSI atau deposito).<br/>
+                  • <strong>Aset & Logam Mulia</strong> adalah aset fisik atau investasi berharga (seperti emas Antam atau reksadana) yang nilainya dapat diapresiasi dalam jangka panjang sebagai lindung nilai kekayaan keluarga.
+                </span>
+              </div>
+            </div>
 
           </div>
         )}
@@ -1463,6 +1809,7 @@ export default function App() {
         onClose={() => setIsAsetModalOpen(false)}
         onSave={handleSaveAset}
         initialData={editingAset}
+        defaultGroup={defaultAsetGroup}
       />
 
       {/* Modal CRUD: Create & Update Utang / Piutang */}
