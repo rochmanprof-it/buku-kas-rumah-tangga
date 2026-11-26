@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, ArrowUpRight, ArrowDownRight, PiggyBank } from 'lucide-react';
-import { KasTransaction, TransactionType, AsetTabungan, isCashSavings } from '../types/finance';
+import { X, Check, ArrowUpRight, ArrowDownRight, PiggyBank, Banknote } from 'lucide-react';
+import {
+  KasTransaction,
+  TransactionType,
+  AsetTabungan,
+  isCashSavings,
+  METODE_PETTY_CASH,
+} from '../types/finance';
 import { getTodayDateString, formatRupiah } from '../utils/formatters';
 
 interface TransactionModalProps {
@@ -9,8 +15,11 @@ interface TransactionModalProps {
   onSave: (tx: KasTransaction) => void;
   initialData?: KasTransaction | null;
   defaultType?: TransactionType;
+  defaultMetodeKas?: string;
   asetList?: AsetTabungan[];
   prefilledAsetId?: string;
+  saldoPettyCash?: number;
+  saldoKasBank?: number;
 }
 
 const KATEGORI_PEMASUKAN = [
@@ -23,21 +32,22 @@ const KATEGORI_PEMASUKAN = [
 ];
 
 const KATEGORI_PENGELUARAN = [
-  'Menabung / Investasi',
-  'Beli Emas / Logam Mulia',
   'Belanja Makan & Dapur',
-  'Tagihan & Utilitas',
-  'Pendidikan Anak',
+  'Belanja Harian',
   'Transportasi & Bensin',
   'Kebutuhan Rumah',
-  'Kesehatan & Obat',
   'Makan di Luar & Jajan',
+  'Tagihan & Utilitas',
+  'Pendidikan Anak',
+  'Kesehatan & Obat',
   'Sosial & Sedekah',
+  'Menabung / Investasi',
+  'Beli Emas / Logam Mulia',
   'Cicilan & Hutang',
   'Lain-lain'
 ];
 
-const METODE_KAS_LIST = ['Kas Tunai', 'Bank Transfer', 'e-Wallet'];
+const METODE_KAS_LIST = ['Bank Transfer', 'e-Wallet', METODE_PETTY_CASH];
 
 export const TransactionModal: React.FC<TransactionModalProps> = ({
   isOpen,
@@ -45,8 +55,11 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   onSave,
   initialData,
   defaultType = 'pengeluaran',
+  defaultMetodeKas = 'Bank Transfer',
   asetList = [],
-  prefilledAsetId
+  prefilledAsetId,
+  saldoPettyCash = 0,
+  saldoKasBank = 0,
 }) => {
   const isEditing = !!initialData;
 
@@ -55,7 +68,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [nominal, setNominal] = useState<string>('');
   const [kategori, setKategori] = useState<string>('');
   const [keterangan, setKeterangan] = useState<string>('');
-  const [metodeKas, setMetodeKas] = useState<string>('Kas Tunai');
+  const [metodeKas, setMetodeKas] = useState<string>(defaultMetodeKas);
   
   // Fitur Pengeluaran Masuk ke Tabungan
   const [isMasukTabungan, setIsMasukTabungan] = useState<boolean>(false);
@@ -68,7 +81,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setNominal(initialData.nominal.toString());
       setKategori(initialData.kategori);
       setKeterangan(initialData.keterangan);
-      setMetodeKas(initialData.metodeKas || 'Kas Tunai');
+      setMetodeKas(initialData.metodeKas || 'Bank Transfer');
       
       if (initialData.masukKeAsetId) {
         setIsMasukTabungan(true);
@@ -83,7 +96,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setNominal('');
       setKategori(defaultType === 'pemasukan' ? KATEGORI_PEMASUKAN[0] : KATEGORI_PENGELUARAN[0]);
       setKeterangan('');
-      setMetodeKas('Kas Tunai');
+      setMetodeKas(defaultMetodeKas || 'Bank Transfer');
 
       if (prefilledAsetId) {
         setIsMasukTabungan(true);
@@ -98,7 +111,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
         setTargetAsetId(asetList[0]?.id || '');
       }
     }
-  }, [initialData, defaultType, isOpen, prefilledAsetId, asetList]);
+  }, [initialData, defaultType, defaultMetodeKas, isOpen, prefilledAsetId, asetList]);
 
   if (!isOpen) return null;
 
@@ -151,6 +164,17 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const categories = jenis === 'pemasukan' ? KATEGORI_PEMASUKAN : KATEGORI_PENGELUARAN;
   const targetAsetObj = asetList.find(a => a.id === targetAsetId) || asetList[0];
   const parsedNominal = parseInt(nominal.replace(/[^0-9]/g, ''), 10) || 0;
+  const isPettyCashSelected = metodeKas === METODE_PETTY_CASH;
+  const metodeOptions =
+    initialData?.metodeKas && !METODE_KAS_LIST.includes(initialData.metodeKas)
+      ? [...METODE_KAS_LIST, initialData.metodeKas]
+      : METODE_KAS_LIST;
+  const nominalPresets = isPettyCashSelected
+    ? [10000, 20000, 50000, 100000, 250000]
+    : [50000, 100000, 250000, 500000, 1000000];
+  const activeWalletBalance = isPettyCashSelected ? saldoPettyCash : saldoKasBank;
+  const projectedWalletBalance =
+    jenis === 'pemasukan' ? activeWalletBalance + parsedNominal : activeWalletBalance - parsedNominal;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
@@ -237,7 +261,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
 
             {/* Quick Presets */}
             <div className="flex items-center gap-1.5 mt-2 overflow-x-auto no-scrollbar">
-              {[50000, 100000, 250000, 500000, 1000000].map(val => (
+              {nominalPresets.map(val => (
                 <button
                   key={val}
                   type="button"
@@ -344,17 +368,43 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
 
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">
-                Metode Kas
+                Sumber / Metode Kas
               </label>
               <select
                 value={metodeKas}
                 onChange={(e) => setMetodeKas(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-900"
+                className={`w-full px-3 py-2 text-xs bg-white border rounded-lg focus:outline-none focus:ring-1 text-slate-900 cursor-pointer ${
+                  isPettyCashSelected
+                    ? 'border-teal-400 focus:ring-teal-500 font-semibold text-teal-900'
+                    : 'border-slate-300 focus:ring-emerald-500'
+                }`}
               >
-                {METODE_KAS_LIST.map(m => (
-                  <option key={m} value={m}>{m}</option>
+                {metodeOptions.map(m => (
+                  <option key={m} value={m}>
+                    {m === METODE_PETTY_CASH ? 'Petty Cash (Cash di Tangan)' : m}
+                  </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          {/* Info Saldo Dompet Aktif (Petty Cash vs Rekening Bank) */}
+          <div className={`px-3 py-2 rounded-lg border text-[11px] flex items-center justify-between gap-2 ${
+            isPettyCashSelected
+              ? 'bg-teal-50/70 border-teal-200 text-teal-900'
+              : 'bg-slate-50 border-slate-200 text-slate-700'
+          }`}>
+            <span className="flex items-center gap-1.5 font-medium">
+              <Banknote className={`w-3.5 h-3.5 shrink-0 ${isPettyCashSelected ? 'text-teal-600' : 'text-slate-500'}`} />
+              <span>{isPettyCashSelected ? 'Saldo Petty Cash' : 'Saldo Rekening (Bank)'}</span>
+            </span>
+            <div className="font-mono tabular-nums text-right">
+              <span className="font-semibold">{formatRupiah(activeWalletBalance)}</span>
+              {parsedNominal > 0 && !isEditing && (
+                <span className={`ml-1.5 font-bold ${projectedWalletBalance < 0 ? 'text-rose-600' : isPettyCashSelected ? 'text-teal-700' : 'text-slate-900'}`}>
+                  → {formatRupiah(projectedWalletBalance)}
+                </span>
+              )}
             </div>
           </div>
 

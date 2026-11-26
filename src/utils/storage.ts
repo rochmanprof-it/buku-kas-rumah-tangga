@@ -1,4 +1,11 @@
-import { KasTransaction, AsetTabungan, DebtRecord, isCashSavings } from '../types/finance';
+import {
+  KasTransaction,
+  AsetTabungan,
+  DebtRecord,
+  isCashSavings,
+  isPettyCashTopUp,
+  isPettyCashReturn,
+} from '../types/finance';
 import { getDefaultTransactions, getDefaultAset, getDefaultDebts } from '../data/defaultData';
 import { supabase } from './supabase';
 
@@ -300,6 +307,42 @@ export function exportTransactionsCSV(transactions: KasTransaction[]): void {
   const link = document.createElement('a');
   link.setAttribute('href', encodedUri);
   link.setAttribute('download', `buku_kas_rumah_tangga_${new Date().toISOString().slice(0, 10)}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+export function exportPettyCashCSV(transactions: KasTransaction[]): void {
+  const headers = ['No', 'Tanggal', 'Tipe Mutasi', 'Kategori', 'Keterangan', 'Sumber / Metode', 'Masuk Petty Cash (Rp)', 'Keluar Petty Cash (Rp)'];
+  const rows = transactions.map((t, index) => {
+    const isTopUp = isPettyCashTopUp(t);
+    const isReturn = isPettyCashReturn(t);
+    const tipeLabel = isTopUp
+      ? 'Isi Petty Cash (Tarik Tunai)'
+      : isReturn
+      ? 'Setor ke Rekening Bank'
+      : t.jenis === 'pemasukan'
+      ? 'Pemasukan Tunai'
+      : 'Belanja Tunai (Pengeluaran)';
+    const masukNominal = isTopUp || (!isReturn && t.jenis === 'pemasukan') ? t.nominal : 0;
+    const keluarNominal = isReturn || (!isTopUp && t.jenis === 'pengeluaran') ? t.nominal : 0;
+
+    return [
+      index + 1,
+      t.tanggal,
+      `"${tipeLabel}"`,
+      `"${(t.kategori || '').replace(/"/g, '""')}"`,
+      `"${(t.keterangan || '').replace(/"/g, '""')}"`,
+      `"${(t.metodeKas || '').replace(/"/g, '""')}"`,
+      masukNominal,
+      keluarNominal,
+    ];
+  });
+  const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement('a');
+  link.setAttribute('href', encodedUri);
+  link.setAttribute('download', `petty_cash_rumah_tangga_${new Date().toISOString().slice(0, 10)}.csv`);
   document.body.appendChild(link);
   link.click();
   link.remove();

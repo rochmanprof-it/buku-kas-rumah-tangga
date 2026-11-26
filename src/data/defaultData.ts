@@ -23,7 +23,7 @@ export function getDefaultTransactions(): KasTransaction[] {
       kategori: 'Usaha Sampingan',
       nominal: 2000000,
       keterangan: 'Laba jualan kue & katering',
-      metodeKas: 'Kas Tunai',
+      metodeKas: 'Bank Transfer',
       createdAt: Date.now() - 23 * 86400000
     },
     {
@@ -37,13 +37,23 @@ export function getDefaultTransactions(): KasTransaction[] {
       createdAt: Date.now() - 22 * 86400000
     },
     {
+      id: 'tx-pc-topup-1',
+      tanggal: `${currentMonth}-05`,
+      jenis: 'pengeluaran',
+      kategori: 'Isi Petty Cash',
+      nominal: 500000,
+      keterangan: 'Tarik tunai mingguan untuk pegangan Petty Cash',
+      metodeKas: 'Bank Transfer',
+      createdAt: Date.now() - 21 * 86400000
+    },
+    {
       id: 'tx-4',
       tanggal: `${currentMonth}-06`,
       jenis: 'pengeluaran',
-      kategori: 'Belanja Dapur',
-      nominal: 750000,
+      kategori: 'Belanja Makan & Dapur',
+      nominal: 185000,
       keterangan: 'Belanja beras, minyak, sayur & lauk pasar',
-      metodeKas: 'Kas Tunai',
+      metodeKas: 'Petty Cash',
       createdAt: Date.now() - 20 * 86400000
     },
     {
@@ -60,10 +70,10 @@ export function getDefaultTransactions(): KasTransaction[] {
       id: 'tx-6',
       tanggal: `${currentMonth}-15`,
       jenis: 'pengeluaran',
-      kategori: 'Transportasi',
-      nominal: 250000,
-      keterangan: 'Bensin motor & operasional keluarga',
-      metodeKas: 'Kas Tunai',
+      kategori: 'Transportasi & Bensin',
+      nominal: 95000,
+      keterangan: 'Bensin motor, parkir & tambal ban',
+      metodeKas: 'Petty Cash',
       createdAt: Date.now() - 11 * 86400000
     },
     {
@@ -71,9 +81,9 @@ export function getDefaultTransactions(): KasTransaction[] {
       tanggal: `${currentMonth}-20`,
       jenis: 'pengeluaran',
       kategori: 'Kebutuhan Rumah',
-      nominal: 350000,
-      keterangan: 'Refill gas elpiji, galon air & sabun cuci',
-      metodeKas: 'Kas Tunai',
+      nominal: 110000,
+      keterangan: 'Refill gas elpiji 3kg, galon air & sabun cuci',
+      metodeKas: 'Petty Cash',
       createdAt: Date.now() - 6 * 86400000
     },
     {
@@ -81,9 +91,9 @@ export function getDefaultTransactions(): KasTransaction[] {
       tanggal: today,
       jenis: 'pengeluaran',
       kategori: 'Belanja Harian',
-      nominal: 65000,
-      keterangan: 'Beli telur ayam & bumbu dapur',
-      metodeKas: 'Kas Tunai',
+      nominal: 45000,
+      keterangan: 'Beli telur ayam, tempe & bumbu dapur',
+      metodeKas: 'Petty Cash',
       createdAt: Date.now() - 3600000
     }
   ];

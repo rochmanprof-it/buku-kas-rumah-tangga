@@ -508,8 +508,8 @@ export const JualAsetModal: React.FC<JualAsetModalProps> = ({
                 className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-900 cursor-pointer"
               >
                 <option value="Bank Transfer">Bank Transfer</option>
-                <option value="Kas Tunai">Kas Tunai</option>
                 <option value="e-Wallet">e-Wallet</option>
+                <option value="Petty Cash">Petty Cash (Cash di Tangan)</option>
               </select>
             </div>
           </div>

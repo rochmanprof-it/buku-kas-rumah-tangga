@@ -29,9 +29,25 @@ import {
   Clock,
   Check,
   Tag,
-  X
+  X,
+  Banknote,
+  ArrowRightLeft
 } from 'lucide-react';
-import { KasTransaction, AsetTabungan, DebtRecord, TransactionType, DebtType, AsetGroupType, isCashSavings } from './types/finance';
+import {
+  KasTransaction,
+  AsetTabungan,
+  DebtRecord,
+  TransactionType,
+  DebtType,
+  AsetGroupType,
+  isCashSavings,
+  METODE_PETTY_CASH,
+  isPettyCashTopUp,
+  isPettyCashReturn,
+  isPettyCashTransfer,
+  isPettyCashLedgerEntry,
+  calculateCashMetrics
+} from './types/finance';
 import {
   loadTransactions,
   saveTransactions,
@@ -43,18 +59,20 @@ import {
   saveDebts,
   deleteDebtInSupabase,
   exportTransactionsCSV,
+  exportPettyCashCSV,
   exportAsetCSV,
   exportDebtsCSV
 } from './utils/storage';
 import { getDefaultTransactions, getDefaultAset, getDefaultDebts } from './data/defaultData';
 import { formatRupiah, formatDateIndo, getCurrentMonthKey, getMonthNameIndo } from './utils/formatters';
 import { TransactionModal } from './components/TransactionModal';
+import { PettyCashTransferModal, PettyCashTransferMode } from './components/PettyCashTransferModal';
 import { AsetModal } from './components/AsetModal';
 import { DebtModal } from './components/DebtModal';
 import { DebtPaymentModal } from './components/DebtPaymentModal';
 import { JualAsetModal, JualAsetSubmitPayload } from './components/JualAsetModal';
 
-type ActiveViewTab = 'kas' | 'aset' | 'utang_piutang';
+type ActiveViewTab = 'kas' | 'petty_cash' | 'aset' | 'utang_piutang';
 
 export default function App() {
   const [transactions, setTransactions] = useState<KasTransaction[]>([]);
@@ -65,9 +83,14 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveViewTab>('kas');
 
   // Filters for Kas
-  const [filterType, setFilterType] = useState<'semua' | 'pemasukan' | 'pengeluaran' | 'tabungan' | 'utang' | 'piutang'>('semua');
+  const [filterType, setFilterType] = useState<'semua' | 'pemasukan' | 'pengeluaran' | 'petty_cash' | 'tabungan' | 'utang' | 'piutang'>('semua');
   const [selectedMonth, setSelectedMonth] = useState<string>('semua');
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Filters for Petty Cash
+  const [pettyCashFilter, setPettyCashFilter] = useState<'semua' | 'belanja' | 'isi' | 'setor'>('semua');
+  const [pettyCashMonth, setPettyCashMonth] = useState<string>('semua');
+  const [pettyCashSearchQuery, setPettyCashSearchQuery] = useState<string>('');
 
   // Filters for Utang & Piutang
   const [debtFilter, setDebtFilter] = useState<'semua' | 'utang' | 'piutang' | 'belum_lunas' | 'lunas'>('semua');
@@ -77,7 +100,13 @@ export default function App() {
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<KasTransaction | null>(null);
   const [defaultModalType, setDefaultModalType] = useState<TransactionType>('pengeluaran');
+  const [defaultModalMetodeKas, setDefaultModalMetodeKas] = useState<string>('Bank Transfer');
   const [prefilledAsetId, setPrefilledAsetId] = useState<string | undefined>(undefined);
+
+  // Modal for Petty Cash Transfer (Isi Petty Cash / Setor ke Bank)
+  const [isPettyCashModalOpen, setIsPettyCashModalOpen] = useState(false);
+  const [pettyCashTransferMode, setPettyCashTransferMode] = useState<PettyCashTransferMode>('isi');
+  const [editingPettyCashTransfer, setEditingPettyCashTransfer] = useState<KasTransaction | null>(null);
 
   // Filters & State for Aset & Tabungan
   const [asetFilter, setAsetFilter] = useState<'semua' | 'cash' | 'aset'>('semua');
@@ -158,20 +187,49 @@ export default function App() {
     ? transactions 
     : transactions.filter(t => t.tanggal.startsWith(selectedMonth));
 
-  // 1. Saldo Kas & Cashflow
-  const totalPemasukan = useMemo(() => {
-    return calculationDataset
-      .filter(t => t.jenis === 'pemasukan')
-      .reduce((sum, t) => sum + t.nominal, 0);
-  }, [calculationDataset]);
+  // 1. Saldo Kas Rekening (Bank) & Petty Cash (Cash di Tangan)
+  const cashMetrics = useMemo(() => calculateCashMetrics(calculationDataset), [calculationDataset]);
+  const allTimeCashMetrics = useMemo(() => calculateCashMetrics(transactions), [transactions]);
 
-  const totalPengeluaran = useMemo(() => {
-    return calculationDataset
-      .filter(t => t.jenis === 'pengeluaran')
-      .reduce((sum, t) => sum + t.nominal, 0);
-  }, [calculationDataset]);
+  const totalPemasukan = cashMetrics.totalPemasukanRiil;
+  const totalPengeluaran = cashMetrics.totalPengeluaranRiil;
+  const saldoKasBank = cashMetrics.saldoKasBank;
+  const saldoPettyCash = cashMetrics.saldoPettyCash;
+  const saldoKas = cashMetrics.totalSaldoKas;
 
-  const saldoKas = totalPemasukan - totalPengeluaran;
+  // Petty Cash metrics scoped to Petty Cash tab period filter
+  const pettyCashPeriodDataset = useMemo(() => {
+    const base = pettyCashMonth === 'semua'
+      ? transactions
+      : transactions.filter(t => t.tanggal.startsWith(pettyCashMonth));
+    return base.filter(isPettyCashLedgerEntry);
+  }, [transactions, pettyCashMonth]);
+
+  const pettyCashMetrics = useMemo(() => {
+    const raw = pettyCashMonth === 'semua'
+      ? transactions
+      : transactions.filter(t => t.tanggal.startsWith(pettyCashMonth));
+    return calculateCashMetrics(raw);
+  }, [transactions, pettyCashMonth]);
+
+  const pettyCashCategoryBreakdown = useMemo(() => {
+    const map = new Map<string, number>();
+    let totalSpent = 0;
+    for (const t of pettyCashPeriodDataset) {
+      if (!isPettyCashTransfer(t) && t.jenis === 'pengeluaran' && t.metodeKas === METODE_PETTY_CASH) {
+        const cat = t.kategori || 'Lain-lain';
+        map.set(cat, (map.get(cat) || 0) + t.nominal);
+        totalSpent += t.nominal;
+      }
+    }
+    return Array.from(map.entries())
+      .map(([kategori, total]) => ({
+        kategori,
+        total,
+        persen: totalSpent > 0 ? (total / totalSpent) * 100 : 0,
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [pettyCashPeriodDataset]);
 
   // Total pengeluaran yang dialirkan masuk ke tabungan
   const totalMasukTabungan = useMemo(() => {
@@ -216,11 +274,12 @@ export default function App() {
   // Total Kekayaan Bersih (Kas + Tabungan + Piutang - Utang)
   const totalKekayaanBersih = saldoKas + totalAset + totalSisaPiutang - totalSisaUtang;
 
-  // Filtered transactions for the table
+  // Filtered transactions for the Buku Kas table
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
-      if (filterType === 'pemasukan' && t.jenis !== 'pemasukan') return false;
-      if (filterType === 'pengeluaran' && t.jenis !== 'pengeluaran') return false;
+      if (filterType === 'pemasukan' && (t.jenis !== 'pemasukan' || isPettyCashTransfer(t))) return false;
+      if (filterType === 'pengeluaran' && (t.jenis !== 'pengeluaran' || isPettyCashTransfer(t))) return false;
+      if (filterType === 'petty_cash' && !isPettyCashLedgerEntry(t)) return false;
       if (filterType === 'tabungan' && (!t.masukKeAsetId || t.jenis !== 'pengeluaran')) return false;
       if (filterType === 'utang' && (t.terkaitDebtTipe !== 'utang')) return false;
       if (filterType === 'piutang' && (t.terkaitDebtTipe !== 'piutang')) return false;
@@ -238,8 +297,30 @@ export default function App() {
         if (!ketMatch && !katMatch && !metMatch && !astMatch && !debtMatch && !tglMatch) return false;
       }
       return true;
-    }).sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
+    }).sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime() || b.createdAt - a.createdAt);
   }, [transactions, filterType, selectedMonth, searchQuery]);
+
+  // Filtered transactions for the Petty Cash ledger
+  const allPettyCashTransactions = useMemo(() => {
+    return transactions.filter(isPettyCashLedgerEntry);
+  }, [transactions]);
+
+  const filteredPettyCashTransactions = useMemo(() => {
+    return pettyCashPeriodDataset.filter(t => {
+      if (pettyCashFilter === 'belanja' && (isPettyCashTransfer(t) || t.jenis !== 'pengeluaran')) return false;
+      if (pettyCashFilter === 'isi' && !isPettyCashTopUp(t) && (isPettyCashTransfer(t) || t.jenis !== 'pemasukan')) return false;
+      if (pettyCashFilter === 'setor' && !isPettyCashReturn(t)) return false;
+
+      if (pettyCashSearchQuery.trim()) {
+        const q = pettyCashSearchQuery.toLowerCase();
+        const ketMatch = (t.keterangan || '').toLowerCase().includes(q);
+        const katMatch = (t.kategori || '').toLowerCase().includes(q);
+        const tglMatch = (t.tanggal || '').includes(q);
+        if (!ketMatch && !katMatch && !tglMatch) return false;
+      }
+      return true;
+    }).sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime() || b.createdAt - a.createdAt);
+  }, [pettyCashPeriodDataset, pettyCashFilter, pettyCashSearchQuery]);
 
   // Filtered debts
   const filteredDebts = useMemo(() => {
@@ -265,18 +346,32 @@ export default function App() {
   }, [debts, debtFilter, debtSearchQuery]);
 
   // Transaction CRUD Handlers
-  const handleOpenCreateTx = (type: TransactionType, targetAset?: string) => {
+  const handleOpenCreateTx = (type: TransactionType, targetAset?: string, metodeKas?: string) => {
     setEditingTransaction(null);
     setDefaultModalType(type);
+    setDefaultModalMetodeKas(metodeKas || 'Bank Transfer');
     setPrefilledAsetId(targetAset);
     setIsTxModalOpen(true);
   };
 
   const handleOpenEditTx = (tx: KasTransaction) => {
+    if (isPettyCashTransfer(tx)) {
+      setEditingPettyCashTransfer(tx);
+      setPettyCashTransferMode(isPettyCashReturn(tx) ? 'setor' : 'isi');
+      setIsPettyCashModalOpen(true);
+      return;
+    }
     setEditingTransaction(tx);
     setDefaultModalType(tx.jenis);
+    setDefaultModalMetodeKas(tx.metodeKas || 'Bank Transfer');
     setPrefilledAsetId(tx.masukKeAsetId);
     setIsTxModalOpen(true);
+  };
+
+  const handleOpenPettyCashTransfer = (mode: PettyCashTransferMode = 'isi') => {
+    setEditingPettyCashTransfer(null);
+    setPettyCashTransferMode(mode);
+    setIsPettyCashModalOpen(true);
   };
 
   const handleSaveTransaction = (savedTx: KasTransaction) => {
@@ -608,12 +703,15 @@ export default function App() {
   };
 
   const handleResetData = () => {
-    if (window.confirm('Apakah Anda yakin ingin memuat kembali contoh data awal (Buku Kas, Aset, dan Utang Piutang)?')) {
+    if (window.confirm('Apakah Anda yakin ingin memuat kembali contoh data awal (Buku Kas, Petty Cash, Aset, dan Utang Piutang)?')) {
       setTransactions(getDefaultTransactions());
       setAsetList(getDefaultAset());
       setDebts(getDefaultDebts());
       setSelectedMonth('semua');
       setFilterType('semua');
+      setPettyCashFilter('semua');
+      setPettyCashMonth('semua');
+      setPettyCashSearchQuery('');
       setDebtFilter('semua');
       setSearchQuery('');
       setDebtSearchQuery('');
@@ -661,28 +759,37 @@ export default function App() {
       
       {/* Top Bar Header */}
       <header className="sticky top-0 z-30 bg-white border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           
           {/* Wordmark */}
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-lg shadow-xs">
+            <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-lg shadow-xs shrink-0">
               <Wallet className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-lg font-bold tracking-tight text-slate-900 block leading-tight">
+              <span className="text-lg font-bold tracking-tight text-slate-900 block leading-tight whitespace-nowrap">
                 BukuKas<span className="text-emerald-600">.RumahTangga</span>
               </span>
-              <span className="text-[11px] text-slate-400 block leading-none">
-                Kas · Tabungan · Utang & Piutang
+              <span className="text-[11px] text-slate-400 block leading-none whitespace-nowrap">
+                Kas Rekening · Petty Cash · Tabungan · Utang Piutang
               </span>
             </div>
           </div>
 
           {/* Right Header: Quick Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={() => handleOpenCreateTx('pemasukan')}
-              className="px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
+              onClick={() => handleOpenPettyCashTransfer('isi')}
+              className="px-3 py-1.5 text-xs font-semibold text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg transition-colors cursor-pointer hidden sm:flex items-center gap-1.5 whitespace-nowrap"
+              title="Tarik tunai dari rekening ke dompet Petty Cash"
+            >
+              <Banknote className="w-4 h-4 text-teal-600" />
+              <span>Isi Petty Cash</span>
+            </button>
+
+            <button
+              onClick={() => handleOpenCreateTx('pemasukan', undefined, activeTab === 'petty_cash' ? METODE_PETTY_CASH : 'Bank Transfer')}
+              className="px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
             >
               <ArrowUpRight className="w-4 h-4 text-emerald-600" />
               <span className="hidden sm:inline">+ Pemasukan</span>
@@ -690,8 +797,8 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => handleOpenCreateTx('pengeluaran')}
-              className="px-3.5 py-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+              onClick={() => handleOpenCreateTx('pengeluaran', undefined, activeTab === 'petty_cash' ? METODE_PETTY_CASH : 'Bank Transfer')}
+              className="px-3.5 py-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
             >
               <ArrowDownRight className="w-4 h-4" />
               <span className="hidden sm:inline">+ Pengeluaran</span>
@@ -700,7 +807,7 @@ export default function App() {
 
             <button
               onClick={() => handleOpenCreateDebt('utang')}
-              className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer hidden md:flex items-center gap-1.5"
+              className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer hidden md:flex items-center gap-1.5 whitespace-nowrap"
             >
               <HandCoins className="w-4 h-4 text-slate-600" />
               <span>+ Utang/Piutang</span>
@@ -711,7 +818,7 @@ export default function App() {
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
         
         {/* Banner Notifikasi Realisasi Penjualan Aset */}
         {saleNotification && (
@@ -742,25 +849,27 @@ export default function App() {
         )}
 
         {/* Title & View Switcher */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-200/80">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-2 border-b border-slate-200/80">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
-              {activeTab === 'kas' && 'Buku Kas & Pengeluaran'}
+              {activeTab === 'kas' && 'Buku Kas & Mutasi Rekening'}
+              {activeTab === 'petty_cash' && 'Petty Cash (Cash di Tangan)'}
               {activeTab === 'aset' && 'Daftar Aset & Tabungan Keluarga'}
               {activeTab === 'utang_piutang' && 'Catatan Utang & Piutang'}
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              {activeTab === 'kas' && 'Catat uang masuk, pengeluaran harian, dan pembayaran utang piutang.'}
+              {activeTab === 'kas' && 'Catat uang masuk rekening, tarik tunai Petty Cash, dan pengeluaran keluarga.'}
+              {activeTab === 'petty_cash' && 'Catat penarikan tunai (misal Rp 500rb/minggu) dan lacak detail belanja cash harian.'}
               {activeTab === 'aset' && 'Pos tabungan darurat, emas, dan simpanan keluarga yang terakumulasi.'}
               {activeTab === 'utang_piutang' && 'Bayar utang mengurangi kas, terima pelunasan piutang menambah kas.'}
             </p>
           </div>
 
-          {/* Segmented View Switcher: Buku Kas vs Aset vs Utang & Piutang */}
-          <div className="flex items-center p-1 bg-slate-100 rounded-xl self-start sm:self-auto border border-slate-200/60 overflow-x-auto">
+          {/* Segmented View Switcher */}
+          <div className="flex items-center p-1 bg-slate-100 rounded-xl self-start lg:self-auto border border-slate-200/60 overflow-x-auto max-w-full">
             <button
               onClick={() => setActiveTab('kas')}
-              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                 activeTab === 'kas'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -771,8 +880,20 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => setActiveTab('petty_cash')}
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+                activeTab === 'petty_cash'
+                  ? 'bg-white text-teal-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Banknote className="w-3.5 h-3.5 text-teal-600" />
+              <span>Petty Cash ({allPettyCashTransactions.length})</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('aset')}
-              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                 activeTab === 'aset'
                   ? 'bg-white text-indigo-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -784,7 +905,7 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab('utang_piutang')}
-              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                 activeTab === 'utang_piutang'
                   ? 'bg-white text-rose-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -796,119 +917,150 @@ export default function App() {
           </div>
         </div>
 
-        {/* 5 Main Financial KPI Cards (Memisahkan Tabungan Cash vs Aset Logam Mulia) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+        {/* 6 Main Financial KPI Cards (Kas Rekening, Petty Cash, Tabungan Cash, Aset, Utang, Piutang) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
           
-          {/* 1. Saldo Kas Operasional */}
+          {/* 1. Kas Rekening (Bank) */}
           <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between text-slate-500 mb-2">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
-                  Kas Operasional
+                  Kas Rekening
                 </span>
-                <div className={`p-1.5 rounded-lg ${saldoKas >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                  <Wallet className="w-4 h-4" />
+                <div className={`p-1.5 rounded-lg ${saldoKasBank >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                  <Landmark className="w-4 h-4" />
                 </div>
               </div>
               
-              <div className={`text-xl font-bold font-mono tracking-tight ${saldoKas >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
-                {formatRupiah(saldoKas)}
+              <div className={`text-lg font-bold font-mono tabular-nums tracking-tight ${saldoKasBank >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
+                {formatRupiah(saldoKasBank)}
               </div>
             </div>
 
-            <div className="text-[11px] text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between">
-              <span>Kas harian</span>
-              <span className={`font-semibold ${saldoKas >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                {saldoKas >= 0 ? 'Kas Ada' : 'Defisit'}
-              </span>
+            <div className="text-[11px] text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+              <span className="truncate">Saldo bank</span>
+              <button
+                onClick={() => handleOpenPettyCashTransfer('isi')}
+                className="font-semibold text-teal-700 hover:text-teal-900 cursor-pointer whitespace-nowrap shrink-0"
+              >
+                Isi Tunai →
+              </button>
             </div>
           </div>
 
-          {/* 2. Tabungan Cash / Bank (Likuid) */}
-          <div className="bg-white border border-indigo-200/80 rounded-xl p-4 shadow-xs flex flex-col justify-between relative overflow-hidden">
+          {/* 2. Petty Cash (Cash di Tangan) */}
+          <div className="bg-white border border-teal-200/90 rounded-xl p-4 shadow-xs flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-900 flex items-center gap-1">
-                  <span>Tabungan Cash</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-teal-900">
+                  Petty Cash
+                </span>
+                <div className={`p-1.5 rounded-lg ${saldoPettyCash >= 0 ? 'bg-teal-50 text-teal-700' : 'bg-rose-50 text-rose-700'}`}>
+                  <Banknote className="w-4 h-4" />
+                </div>
+              </div>
+              
+              <div className={`text-lg font-bold font-mono tabular-nums tracking-tight ${saldoPettyCash >= 0 ? 'text-teal-900' : 'text-rose-600'}`}>
+                {formatRupiah(saldoPettyCash)}
+              </div>
+            </div>
+
+            <div className="text-[11px] text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+              <span className="truncate">Cash di tangan</span>
+              <button
+                onClick={() => setActiveTab('petty_cash')}
+                className="font-semibold text-teal-700 hover:text-teal-900 cursor-pointer whitespace-nowrap shrink-0"
+              >
+                Detail →
+              </button>
+            </div>
+          </div>
+
+          {/* 3. Tabungan Cash / Bank (Likuid) */}
+          <div className="bg-white border border-indigo-200/80 rounded-xl p-4 shadow-xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between text-slate-500 mb-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-900">
+                  Tabungan Cash
                 </span>
                 <div className="p-1.5 bg-indigo-50 text-indigo-700 rounded-lg">
                   <PiggyBank className="w-4 h-4" />
                 </div>
               </div>
               
-              <div className="text-xl font-bold font-mono text-indigo-900 tracking-tight">
+              <div className="text-lg font-bold font-mono tabular-nums text-indigo-900 tracking-tight">
                 {formatRupiah(totalTabunganCash)}
               </div>
             </div>
 
-            <div className="text-[11px] text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between">
-              <span>{cashSavingsItems.length} Pos Rekening</span>
+            <div className="text-[11px] text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+              <span className="truncate">{cashSavingsItems.length} Pos</span>
               <button 
                 onClick={() => { setActiveTab('aset'); setAsetFilter('cash'); }}
-                className="font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                className="font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer whitespace-nowrap shrink-0"
               >
                 Lihat →
               </button>
             </div>
           </div>
 
-          {/* 3. Aset & Logam Mulia */}
-          <div className="bg-white border border-amber-200/90 rounded-xl p-4 shadow-xs flex flex-col justify-between relative overflow-hidden bg-gradient-to-br from-white via-white to-amber-50/30">
+          {/* 4. Aset & Logam Mulia */}
+          <div className="bg-white border border-amber-200/90 rounded-xl p-4 shadow-xs flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1">
-                  <span>Aset & Logam Mulia</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-900">
+                  Aset & Emas
                 </span>
                 <div className="p-1.5 bg-amber-50 text-amber-700 rounded-lg">
                   <Coins className="w-4 h-4" />
                 </div>
               </div>
               
-              <div className="text-xl font-bold font-mono text-amber-900 tracking-tight">
+              <div className="text-lg font-bold font-mono tabular-nums text-amber-900 tracking-tight">
                 {formatRupiah(totalAsetLogamMulia)}
               </div>
             </div>
 
-            <div className="text-[11px] text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between">
-              <span>{physicalAssetsItems.length} Pos Emas/Investasi</span>
+            <div className="text-[11px] text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+              <span className="truncate">{physicalAssetsItems.length} Pos</span>
               <button 
                 onClick={() => { setActiveTab('aset'); setAsetFilter('aset'); }}
-                className="font-semibold text-amber-700 hover:text-amber-900 cursor-pointer"
+                className="font-semibold text-amber-700 hover:text-amber-900 cursor-pointer whitespace-nowrap shrink-0"
               >
                 Lihat →
               </button>
             </div>
           </div>
 
-          {/* 4. Sisa Utang Kita (Kewajiban) */}
+          {/* 5. Sisa Utang Kita (Kewajiban) */}
           <div className="bg-white border border-rose-200/80 rounded-xl p-4 shadow-xs flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between text-slate-500 mb-2">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-rose-900">
-                  Sisa Utang Kita
+                  Sisa Utang
                 </span>
                 <div className="p-1.5 bg-rose-50 text-rose-700 rounded-lg">
                   <ArrowDownRight className="w-4 h-4" />
                 </div>
               </div>
               
-              <div className="text-xl font-bold font-mono text-rose-600 tracking-tight">
+              <div className="text-lg font-bold font-mono tabular-nums text-rose-600 tracking-tight">
                 {formatRupiah(totalSisaUtang)}
               </div>
             </div>
 
-            <div className="text-[11px] text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between">
-              <span>Kewajiban bayar</span>
+            <div className="text-[11px] text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+              <span className="truncate">Kewajiban</span>
               <button 
                 onClick={() => { setActiveTab('utang_piutang'); setDebtFilter('utang'); }}
-                className="font-semibold text-rose-600 hover:text-rose-800 cursor-pointer"
+                className="font-semibold text-rose-600 hover:text-rose-800 cursor-pointer whitespace-nowrap shrink-0"
               >
                 Bayar →
               </button>
             </div>
           </div>
 
-          {/* 5. Sisa Piutang (Hak Tagih Kita) */}
+          {/* 6. Sisa Piutang (Hak Tagih Kita) */}
           <div className="bg-white border border-emerald-200/80 rounded-xl p-4 shadow-xs flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between text-slate-500 mb-2">
@@ -920,16 +1072,16 @@ export default function App() {
                 </div>
               </div>
               
-              <div className="text-xl font-bold font-mono text-emerald-600 tracking-tight">
+              <div className="text-lg font-bold font-mono tabular-nums text-emerald-600 tracking-tight">
                 {formatRupiah(totalSisaPiutang)}
               </div>
             </div>
 
-            <div className="text-[11px] text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between">
-              <span>Uang di pihak lain</span>
+            <div className="text-[11px] text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+              <span className="truncate">Hak tagih</span>
               <button 
                 onClick={() => { setActiveTab('utang_piutang'); setDebtFilter('piutang'); }}
-                className="font-semibold text-emerald-600 hover:text-emerald-800 cursor-pointer"
+                className="font-semibold text-emerald-600 hover:text-emerald-800 cursor-pointer whitespace-nowrap shrink-0"
               >
                 Terima →
               </button>
@@ -967,7 +1119,7 @@ export default function App() {
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    Pemasukan ({transactions.filter(t => t.jenis === 'pemasukan').length})
+                    Pemasukan ({transactions.filter(t => t.jenis === 'pemasukan' && !isPettyCashTransfer(t)).length})
                   </button>
 
                   <button
@@ -978,7 +1130,18 @@ export default function App() {
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    Pengeluaran ({transactions.filter(t => t.jenis === 'pengeluaran').length})
+                    Pengeluaran ({transactions.filter(t => t.jenis === 'pengeluaran' && !isPettyCashTransfer(t)).length})
+                  </button>
+
+                  <button
+                    onClick={() => setFilterType('petty_cash')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                      filterType === 'petty_cash'
+                        ? 'bg-white text-teal-800 shadow-xs font-semibold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Petty Cash ({allPettyCashTransactions.length})
                   </button>
 
                   <button
@@ -1126,6 +1289,10 @@ export default function App() {
                     <tbody className="divide-y divide-slate-100 text-xs">
                       {filteredTransactions.map((tx) => {
                         const isIncome = tx.jenis === 'pemasukan';
+                        const isTopUpPC = isPettyCashTopUp(tx);
+                        const isReturnPC = isPettyCashReturn(tx);
+                        const isTransferPC = isTopUpPC || isReturnPC;
+                        const isPettyCashTx = tx.metodeKas === METODE_PETTY_CASH;
                         const goesToSavings = tx.jenis === 'pengeluaran' && tx.masukKeAsetId;
                         const isFromDebt = !!tx.terkaitDebtId;
 
@@ -1139,14 +1306,21 @@ export default function App() {
 
                             {/* Jenis */}
                             <td className="py-3.5 px-4 whitespace-nowrap">
-                              <span className={`inline-flex items-center gap-1 font-semibold text-[11px] px-2 py-0.5 rounded ${
-                                isIncome 
-                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60' 
-                                  : 'bg-rose-50 text-rose-700 border border-rose-200/60'
-                              }`}>
-                                {isIncome ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                                <span>{isIncome ? 'Pemasukan (+)' : 'Pengeluaran (-)'}</span>
-                              </span>
+                              {isTransferPC ? (
+                                <span className="inline-flex items-center gap-1 font-semibold text-[11px] px-2 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200">
+                                  <ArrowRightLeft className="w-3 h-3" />
+                                  <span>{isTopUpPC ? 'Isi Petty Cash' : 'Setor ke Bank'}</span>
+                                </span>
+                              ) : (
+                                <span className={`inline-flex items-center gap-1 font-semibold text-[11px] px-2 py-0.5 rounded ${
+                                  isIncome 
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60' 
+                                    : 'bg-rose-50 text-rose-700 border border-rose-200/60'
+                                }`}>
+                                  {isIncome ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                                  <span>{isIncome ? 'Pemasukan (+)' : 'Pengeluaran (-)'}</span>
+                                </span>
+                              )}
                             </td>
 
                             {/* Kategori, Keterangan & Badge Khusus */}
@@ -1157,6 +1331,13 @@ export default function App() {
                               
                               <div className="flex flex-wrap items-center gap-1.5 mt-0.5 text-[11px]">
                                 <span className="text-slate-400">Pos: {tx.kategori}</span>
+
+                                {isTransferPC && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded bg-teal-50 text-teal-800 border border-teal-200 font-medium">
+                                    <Banknote className="w-3 h-3 text-teal-600" />
+                                    <span>{isTopUpPC ? `${tx.metodeKas} → Petty Cash` : `Petty Cash → ${tx.metodeKas}`}</span>
+                                  </span>
+                                )}
 
                                 {/* Badge Penanda Masuk ke Tabungan */}
                                 {goesToSavings && (
@@ -1190,14 +1371,27 @@ export default function App() {
 
                             {/* Metode Kas */}
                             <td className="py-3.5 px-4 whitespace-nowrap text-slate-600">
-                              {tx.metodeKas || 'Kas Tunai'}
+                              {isPettyCashTx ? (
+                                <span className="inline-flex items-center gap-1 font-medium text-teal-800">
+                                  <Banknote className="w-3.5 h-3.5 text-teal-600" />
+                                  <span>Petty Cash</span>
+                                </span>
+                              ) : (
+                                tx.metodeKas || 'Bank Transfer'
+                              )}
                             </td>
 
                             {/* Nominal */}
-                            <td className="py-3.5 px-4 text-right font-mono font-bold whitespace-nowrap">
-                              <span className={isIncome ? 'text-emerald-600' : 'text-rose-600'}>
-                                {isIncome ? '+' : '-'}{formatRupiah(tx.nominal)}
-                              </span>
+                            <td className="py-3.5 px-4 text-right font-mono tabular-nums font-bold whitespace-nowrap">
+                              {isTransferPC ? (
+                                <span className="text-teal-700">
+                                  {formatRupiah(tx.nominal)}
+                                </span>
+                              ) : (
+                                <span className={isIncome ? 'text-emerald-600' : 'text-rose-600'}>
+                                  {isIncome ? '+' : '-'}{formatRupiah(tx.nominal)}
+                                </span>
+                              )}
                             </td>
 
                             {/* Aksi CRUD: Edit & Delete */}
@@ -1229,6 +1423,330 @@ export default function App() {
                 </div>
               )}
 
+            </div>
+
+          </div>
+        )}
+
+        {/* VIEW 1B: PETTY CASH (CASH DI TANGAN & RINCIAN BELANJA TUNAI) */}
+        {activeTab === 'petty_cash' && (
+          <div className="space-y-4">
+
+            {/* Summary Dompet Petty Cash */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-teal-800 block">
+                    Saldo Petty Cash (Cash di Tangan)
+                  </span>
+                  <div className={`text-2xl sm:text-3xl font-bold font-mono tabular-nums tracking-tight mt-1 ${
+                    pettyCashMetrics.saldoPettyCash >= 0 ? 'text-teal-900' : 'text-rose-600'
+                  }`}>
+                    {formatRupiah(pettyCashMetrics.saldoPettyCash)}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mt-1.5">
+                    <span>
+                      Total Tarik Tunai: <strong className="font-mono tabular-nums text-teal-800">+{formatRupiah(pettyCashMetrics.totalTopUpPettyCash)}</strong>
+                    </span>
+                    <span className="text-slate-300">·</span>
+                    <span>
+                      Total Belanja Tunai: <strong className="font-mono tabular-nums text-rose-600">-{formatRupiah(pettyCashMetrics.totalBelanjaPettyCash)}</strong>
+                    </span>
+                    {pettyCashMetrics.totalSetorPettyCash > 0 && (
+                      <>
+                        <span className="text-slate-300">·</span>
+                        <span>
+                          Setor Balik ke Bank: <strong className="font-mono tabular-nums text-slate-700">{formatRupiah(pettyCashMetrics.totalSetorPettyCash)}</strong>
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Tombol Aksi Cepat Petty Cash */}
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => handleOpenPettyCashTransfer('isi')}
+                    className="px-3.5 py-2 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+                  >
+                    <Banknote className="w-4 h-4" />
+                    <span>+ Isi Petty Cash (Tarik Tunai)</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleOpenCreateTx('pengeluaran', undefined, METODE_PETTY_CASH)}
+                    className="px-3.5 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+                  >
+                    <ArrowDownRight className="w-4 h-4" />
+                    <span>- Catat Belanja Tunai</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleOpenPettyCashTransfer('setor')}
+                    className="px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+                    title="Kembalikan sisa uang tunai ke rekening bank"
+                  >
+                    <ArrowRightLeft className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Setor ke Bank</span>
+                  </button>
+
+                  <button
+                    onClick={() => exportPettyCashCSV(filteredPettyCashTransactions)}
+                    className="px-3 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-600" />
+                    <span className="hidden sm:inline">Ekspor CSV</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Ringkasan Pengeluaran Petty Cash per Kategori */}
+              {pettyCashCategoryBreakdown.length > 0 && (
+                <div className="pt-3.5 border-t border-slate-100 space-y-2.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
+                      Rincian Pemakaian Cash per Kategori
+                    </span>
+                    <span className="font-mono tabular-nums text-slate-500 text-[11px]">
+                      Total terpakai: <strong className="text-slate-800">{formatRupiah(pettyCashMetrics.totalBelanjaPettyCash)}</strong>
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                    {pettyCashCategoryBreakdown.slice(0, 8).map((item) => (
+                      <div key={item.kategori} className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2 text-[11px]">
+                          <span className="font-semibold text-slate-800 truncate">{item.kategori}</span>
+                          <span className="font-mono tabular-nums text-slate-500 shrink-0">{item.persen.toFixed(0)}%</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-teal-600 rounded-full"
+                            style={{ width: `${Math.min(item.persen, 100)}%` }}
+                          />
+                        </div>
+                        <div className="text-xs font-mono tabular-nums font-bold text-rose-600">
+                          {formatRupiah(item.total)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Filter Bar Petty Cash */}
+            <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg shrink-0 overflow-x-auto">
+                <button
+                  onClick={() => setPettyCashFilter('semua')}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                    pettyCashFilter === 'semua'
+                      ? 'bg-white text-slate-900 shadow-xs font-semibold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Semua ({pettyCashPeriodDataset.length})
+                </button>
+
+                <button
+                  onClick={() => setPettyCashFilter('belanja')}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                    pettyCashFilter === 'belanja'
+                      ? 'bg-white text-rose-700 shadow-xs font-semibold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Belanja Tunai ({pettyCashPeriodDataset.filter(t => !isPettyCashTransfer(t) && t.jenis === 'pengeluaran').length})
+                </button>
+
+                <button
+                  onClick={() => setPettyCashFilter('isi')}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                    pettyCashFilter === 'isi'
+                      ? 'bg-white text-teal-800 shadow-xs font-semibold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Tarik Tunai / Masuk ({pettyCashPeriodDataset.filter(t => isPettyCashTopUp(t) || (!isPettyCashTransfer(t) && t.jenis === 'pemasukan')).length})
+                </button>
+
+                <button
+                  onClick={() => setPettyCashFilter('setor')}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                    pettyCashFilter === 'setor'
+                      ? 'bg-white text-slate-800 shadow-xs font-semibold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Setor ke Bank ({pettyCashPeriodDataset.filter(isPettyCashReturn).length})
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="flex items-center gap-1 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 shrink-0">
+                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                  <select
+                    value={pettyCashMonth}
+                    onChange={(e) => setPettyCashMonth(e.target.value)}
+                    className="bg-transparent text-slate-800 font-medium text-xs focus:outline-none cursor-pointer"
+                  >
+                    <option value="semua">Semua Periode</option>
+                    {availableMonths.map(m => (
+                      <option key={m} value={m}>{getMonthNameIndo(m)}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="relative flex-1 sm:w-56">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={pettyCashSearchQuery}
+                    onChange={(e) => setPettyCashSearchQuery(e.target.value)}
+                    placeholder="Cari rincian belanja tunai..."
+                    className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-500 focus:bg-white text-slate-900"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Tabel Rincian Petty Cash */}
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between gap-2">
+                <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Buku Detail Petty Cash ({filteredPettyCashTransactions.length} Catatan)
+                </h2>
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    onClick={() => handleOpenPettyCashTransfer('isi')}
+                    className="font-semibold text-teal-700 hover:text-teal-800 cursor-pointer whitespace-nowrap"
+                  >
+                    + Tarik Tunai
+                  </button>
+                  <span className="text-slate-300">·</span>
+                  <button
+                    onClick={() => handleOpenCreateTx('pengeluaran', undefined, METODE_PETTY_CASH)}
+                    className="font-semibold text-rose-600 hover:text-rose-700 cursor-pointer whitespace-nowrap"
+                  >
+                    - Belanja Tunai
+                  </button>
+                </div>
+              </div>
+
+              {filteredPettyCashTransactions.length === 0 ? (
+                <div className="py-16 text-center px-4">
+                  <Banknote className="w-10 h-10 text-teal-300 mx-auto mb-2" />
+                  <h3 className="text-sm font-semibold text-slate-800">Belum ada catatan Petty Cash</h3>
+                  <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                    Mulai dengan menarik tunai dari kas rekening (misal Rp 500.000 per minggu), lalu catat detail belanja uang cash Anda setiap hari.
+                  </p>
+                  <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+                    <button
+                      onClick={() => handleOpenPettyCashTransfer('isi')}
+                      className="px-3.5 py-1.5 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors cursor-pointer"
+                    >
+                      + Isi Petty Cash (Rp 500rb)
+                    </button>
+                    <button
+                      onClick={() => handleOpenCreateTx('pengeluaran', undefined, METODE_PETTY_CASH)}
+                      className="px-3.5 py-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors cursor-pointer"
+                    >
+                      - Catat Belanja Tunai
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                        <th className="py-3 px-4">Tanggal</th>
+                        <th className="py-3 px-4">Tipe Mutasi</th>
+                        <th className="py-3 px-4">Detail Belanja / Keterangan</th>
+                        <th className="py-3 px-4">Sumber / Tujuan</th>
+                        <th className="py-3 px-4 text-right">Nominal</th>
+                        <th className="py-3 px-4 text-center w-24">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs">
+                      {filteredPettyCashTransactions.map((tx) => {
+                        const isTopUp = isPettyCashTopUp(tx);
+                        const isReturn = isPettyCashReturn(tx);
+                        const isInflowToPettyCash = isTopUp || (!isReturn && tx.jenis === 'pemasukan');
+
+                        return (
+                          <tr key={tx.id} className="hover:bg-slate-50/70 transition-colors">
+                            <td className="py-3.5 px-4 font-mono text-slate-600 whitespace-nowrap">
+                              {tx.tanggal}
+                            </td>
+                            <td className="py-3.5 px-4 whitespace-nowrap">
+                              {isTopUp ? (
+                                <span className="inline-flex items-center gap-1 font-semibold text-[11px] px-2 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200">
+                                  <ArrowUpRight className="w-3 h-3" />
+                                  <span>Isi Petty Cash</span>
+                                </span>
+                              ) : isReturn ? (
+                                <span className="inline-flex items-center gap-1 font-semibold text-[11px] px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                                  <ArrowRightLeft className="w-3 h-3" />
+                                  <span>Setor ke Bank</span>
+                                </span>
+                              ) : tx.jenis === 'pemasukan' ? (
+                                <span className="inline-flex items-center gap-1 font-semibold text-[11px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  <ArrowUpRight className="w-3 h-3" />
+                                  <span>Pemasukan Tunai</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 font-semibold text-[11px] px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">
+                                  <ArrowDownRight className="w-3 h-3" />
+                                  <span>Belanja Tunai</span>
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <div className="font-semibold text-slate-900">
+                                {tx.keterangan || tx.kategori}
+                              </div>
+                              <div className="text-[11px] text-slate-400 mt-0.5">
+                                Pos: {tx.kategori}
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 whitespace-nowrap text-slate-600 text-[11px]">
+                              {isTopUp
+                                ? `Dari ${tx.metodeKas}`
+                                : isReturn
+                                ? `Ke ${tx.metodeKas}`
+                                : 'Dompet Petty Cash'}
+                            </td>
+                            <td className="py-3.5 px-4 text-right font-mono tabular-nums font-bold whitespace-nowrap">
+                              <span className={isInflowToPettyCash ? 'text-teal-700' : 'text-rose-600'}>
+                                {isInflowToPettyCash ? '+' : '-'}{formatRupiah(tx.nominal)}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => handleOpenEditTx(tx)}
+                                  title="Ubah catatan"
+                                  className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => setDeletingTxId(tx.id)}
+                                  title="Hapus catatan"
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
           </div>
@@ -1932,14 +2450,14 @@ export default function App() {
 
       {/* Footer */}
       <footer className="mt-auto border-t border-slate-200 bg-white py-4">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
           <div>
             <span className="font-semibold text-slate-700">BukuKas Rumah Tangga</span>
             <span className="mx-2">·</span>
-            <span>Kas Operasional, Tabungan & Aset, Utang dan Piutang Terintegrasi</span>
+            <span>Kas Rekening, Petty Cash, Tabungan & Aset, Utang dan Piutang Terintegrasi</span>
           </div>
           <div>
-            Data tersimpan aman di browser (localStorage)
+            Tersinkronisasi dengan database Supabase
           </div>
         </div>
       </footer>
@@ -1954,8 +2472,25 @@ export default function App() {
         onSave={handleSaveTransaction}
         initialData={editingTransaction}
         defaultType={defaultModalType}
+        defaultMetodeKas={defaultModalMetodeKas}
         asetList={asetList}
         prefilledAsetId={prefilledAsetId}
+        saldoPettyCash={allTimeCashMetrics.saldoPettyCash}
+        saldoKasBank={allTimeCashMetrics.saldoKasBank}
+      />
+
+      {/* Modal Mutasi Rekening <-> Petty Cash */}
+      <PettyCashTransferModal
+        isOpen={isPettyCashModalOpen}
+        onClose={() => {
+          setIsPettyCashModalOpen(false);
+          setEditingPettyCashTransfer(null);
+        }}
+        onSave={handleSaveTransaction}
+        initialMode={pettyCashTransferMode}
+        initialData={editingPettyCashTransfer}
+        saldoKasBank={allTimeCashMetrics.saldoKasBank}
+        saldoPettyCash={allTimeCashMetrics.saldoPettyCash}
       />
 
       {/* Modal CRUD: Create & Update Aset */}

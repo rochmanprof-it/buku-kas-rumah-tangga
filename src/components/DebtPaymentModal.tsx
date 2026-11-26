@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, ArrowDownRight, ArrowUpRight, AlertCircle } from 'lucide-react';
-import { DebtRecord } from '../types/finance';
+import { DebtRecord, METODE_PETTY_CASH } from '../types/finance';
 import { getTodayDateString, formatRupiah } from '../utils/formatters';
 
 interface DebtPaymentModalProps {
@@ -10,7 +10,7 @@ interface DebtPaymentModalProps {
   onSavePayment: (debtId: string, nominal: number, tanggal: string, metodeKas: string, keterangan: string) => void;
 }
 
-const METODE_KAS_LIST = ['Kas Tunai', 'Bank Transfer', 'e-Wallet'];
+const METODE_KAS_LIST = ['Bank Transfer', 'e-Wallet', METODE_PETTY_CASH];
 
 export const DebtPaymentModal: React.FC<DebtPaymentModalProps> = ({
   isOpen,
@@ -20,14 +20,14 @@ export const DebtPaymentModal: React.FC<DebtPaymentModalProps> = ({
 }) => {
   const [nominal, setNominal] = useState('');
   const [tanggal, setTanggal] = useState(getTodayDateString());
-  const [metodeKas, setMetodeKas] = useState('Kas Tunai');
+  const [metodeKas, setMetodeKas] = useState('Bank Transfer');
   const [keterangan, setKeterangan] = useState('');
 
   useEffect(() => {
     if (debt) {
       setNominal(debt.sisaNominal.toString());
       setTanggal(getTodayDateString());
-      setMetodeKas('Kas Tunai');
+      setMetodeKas('Bank Transfer');
       setKeterangan(
         debt.tipe === 'utang'
           ? `Bayar utang ke ${debt.pihak}`
