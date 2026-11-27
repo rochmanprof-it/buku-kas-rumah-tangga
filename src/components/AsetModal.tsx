@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, PiggyBank, Coins, TrendingUp, Building, Wallet, Sparkles } from 'lucide-react';
-import { AsetTabungan, AsetKategori, AsetGroupType, isCashSavings } from '../types/finance';
+import { X, Check, PiggyBank, Coins, Wallet } from 'lucide-react';
+import { AsetTabungan, AsetKategori, AsetGroupType, GoldBrand, GoldPriceSnapshot, isCashSavings } from '../types/finance';
+import { GoldMetaMap, resolveGoldMeta } from '../utils/goldValuation';
+import { formatRupiah } from '../utils/formatters';
 
 interface AsetModalProps {
   isOpen: boolean;
@@ -8,6 +10,8 @@ interface AsetModalProps {
   onSave: (aset: AsetTabungan) => void;
   initialData?: AsetTabungan | null;
   defaultGroup?: AsetGroupType;
+  goldPrices?: GoldPriceSnapshot | null;
+  goldMetaMap?: GoldMetaMap;
 }
 
 const KATEGORI_CASH_OPTIONS: { label: string; value: AsetKategori; desc: string }[] = [
@@ -17,7 +21,8 @@ const KATEGORI_CASH_OPTIONS: { label: string; value: AsetKategori; desc: string 
 ];
 
 const KATEGORI_ASET_OPTIONS: { label: string; value: AsetKategori; desc: string }[] = [
-  { label: 'Emas / Logam Mulia (Antam, UBS, Perhiasan)', value: 'emas', desc: 'Emas batangan, koin dinar, atau perhiasan berharga' },
+  { label: 'Emas / Logam Mulia (Antam, UBS, Galeri 24)', value: 'emas', desc: 'Emas batangan Antam, UBS, G24, atau perhiasan emas' },
+  { label: 'Perak / Silver Batangan & Koin', value: 'perak', desc: 'Perak batangan Antam, koin silver, atau dirham perak' },
   { label: 'Reksadana / Saham / Obligasi', value: 'investasi', desc: 'Portofolio pasar modal (Bibit, Bareksa, Ajaib, dll)' },
   { label: 'Properti / Tanah / Bangunan', value: 'properti', desc: 'Rumah, tanah kavling, ruko, atau aset tak bergerak' },
   { label: 'Aset Koleksi / Berharga Lainnya', value: 'lainnya', desc: 'Kendaraan bernilai, barang koleksi bernilai tinggi' },
@@ -29,6 +34,8 @@ export const AsetModal: React.FC<AsetModalProps> = ({
   onSave,
   initialData,
   defaultGroup = 'cash',
+  goldPrices = null,
+  goldMetaMap = {},
 }) => {
   const isEditing = !!initialData;
 
@@ -36,6 +43,8 @@ export const AsetModal: React.FC<AsetModalProps> = ({
   const [nama, setNama] = useState('');
   const [kategori, setKategori] = useState<AsetKategori>('tabungan');
   const [nominal, setNominal] = useState('');
+  const [merekEmas, setMerekEmas] = useState<GoldBrand>('antam');
+  const [beratGram, setBeratGram] = useState('');
   const [institusi, setInstitusi] = useState('');
   const [keterangan, setKeterangan] = useState('');
 
@@ -47,16 +56,27 @@ export const AsetModal: React.FC<AsetModalProps> = ({
       setNominal(initialData.nominal.toString());
       setInstitusi(initialData.institusi || '');
       setKeterangan(initialData.keterangan || '');
+
+      if (initialData.kategori === 'emas' || initialData.kategori === 'perak') {
+        const resolved = resolveGoldMeta(initialData, goldMetaMap);
+        setMerekEmas(resolved.merekEmas);
+        setBeratGram(resolved.beratGram > 0 ? resolved.beratGram.toString() : '');
+      } else {
+        setMerekEmas('antam');
+        setBeratGram('');
+      }
     } else {
       const initGroup = defaultGroup || 'cash';
       setActiveGroup(initGroup);
       setNama('');
       setKategori(initGroup === 'cash' ? 'tabungan' : 'emas');
       setNominal('');
+      setMerekEmas('antam');
+      setBeratGram('');
       setInstitusi(initGroup === 'cash' ? 'Bank BCA' : 'Brankas Pribadi');
       setKeterangan('');
     }
-  }, [initialData, isOpen, defaultGroup]);
+  }, [initialData, isOpen, defaultGroup, goldMetaMap]);
 
   if (!isOpen) return null;
 
@@ -75,6 +95,17 @@ export const AsetModal: React.FC<AsetModalProps> = ({
     }
   };
 
+  const parsedGram = parseFloat(beratGram.replace(',', '.')) || 0;
+  const activeSellPerGram =
+    kategori === 'emas'
+      ? goldPrices
+        ? goldPrices[merekEmas]?.sellPerGram || 0
+        : 0
+      : kategori === 'perak'
+      ? goldPrices?.perak?.sellPerGram || 0
+      : 0;
+  const estimatedSellToday = parsedGram > 0 && activeSellPerGram > 0 ? Math.round(parsedGram * activeSellPerGram) : 0;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const cleanNum = nominal.toString().replace(/[^0-9]/g, '');
@@ -91,6 +122,8 @@ export const AsetModal: React.FC<AsetModalProps> = ({
       nominal: num,
       institusi: institusi.trim() || undefined,
       keterangan: keterangan.trim() || undefined,
+      merekEmas: kategori === 'emas' ? merekEmas : undefined,
+      beratGram: (kategori === 'emas' || kategori === 'perak') && parsedGram > 0 ? parsedGram : undefined,
       updatedAt: Date.now()
     };
 
@@ -172,7 +205,13 @@ export const AsetModal: React.FC<AsetModalProps> = ({
               type="text"
               value={nama}
               onChange={(e) => setNama(e.target.value)}
-              placeholder={activeGroup === 'cash' ? 'Contoh: Tabungan Dana Darurat / Rekening Gaji BCA' : 'Contoh: Emas Batangan Antam 10g / Reksadana Bibit'}
+              placeholder={
+                activeGroup === 'cash'
+                  ? 'Contoh: Tabungan Dana Darurat / Rekening Gaji BCA'
+                  : kategori === 'perak'
+                  ? 'Contoh: Perak Antam 100g / Koin Dirham Perak 50g'
+                  : 'Contoh: Emas Batangan Antam 10g / Emas UBS 5g'
+              }
               required
               autoFocus
               className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900"
@@ -197,10 +236,131 @@ export const AsetModal: React.FC<AsetModalProps> = ({
             </select>
           </div>
 
+          {/* Detail Khusus Emas: Merek (Antam, UBS, G24) & Berat (Gram) */}
+          {kategori === 'emas' && (
+            <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-amber-950 mb-1">
+                    Merek Emas
+                  </label>
+                  <select
+                    value={merekEmas}
+                    onChange={(e) => setMerekEmas(e.target.value as GoldBrand)}
+                    className="w-full px-3 py-2 text-xs bg-white border border-amber-300 rounded-lg font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                  >
+                    <option value="antam">Antam (LM)</option>
+                    <option value="ubs">UBS</option>
+                    <option value="galeri24">Galeri 24 (G24)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-amber-950 mb-1">
+                    Berat Emas (Gram) *
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={beratGram}
+                    onChange={(e) => {
+                      const clean = e.target.value.replace(/[^0-9.,]/g, '');
+                      setBeratGram(clean);
+                    }}
+                    placeholder="Contoh: 5 atau 10"
+                    className="w-full px-3 py-2 text-xs font-mono font-bold bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                {[1, 2, 5, 10, 25, 50].map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => setBeratGram(g.toString())}
+                    className={`px-2 py-1 text-[11px] font-mono rounded-md transition-colors cursor-pointer shrink-0 ${
+                      parsedGram === g
+                        ? 'bg-amber-600 text-white font-semibold'
+                        : 'bg-white border border-amber-200 text-amber-900 hover:bg-amber-100'
+                    }`}
+                  >
+                    {g} gr
+                  </button>
+                ))}
+              </div>
+
+              {estimatedSellToday > 0 && (
+                <div className="text-[11px] bg-white border border-amber-200 rounded-lg px-3 py-2 flex items-center justify-between">
+                  <span className="text-amber-900">
+                    Estimasi Jual Hari Ini ({parsedGram}g @ {formatRupiah(activeSellPerGram)}/gr):
+                  </span>
+                  <strong className="font-mono tabular-nums text-amber-950">
+                    {formatRupiah(estimatedSellToday)}
+                  </strong>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Detail Khusus Perak / Silver: Berat (Gram) & Estimasi Harga Perak */}
+          {kategori === 'perak' && (
+            <div className="p-3.5 rounded-xl bg-slate-100/80 border border-slate-300 space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-800 mb-1">
+                  Berat Perak (Gram) *
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={beratGram}
+                  onChange={(e) => {
+                    const clean = e.target.value.replace(/[^0-9.,]/g, '');
+                    setBeratGram(clean);
+                  }}
+                  placeholder="Contoh: 50, 100, atau 250"
+                  className="w-full px-3 py-2 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 text-slate-900"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                {[10, 25, 50, 100, 250, 500, 1000].map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => setBeratGram(g.toString())}
+                    className={`px-2 py-1 text-[11px] font-mono rounded-md transition-colors cursor-pointer shrink-0 ${
+                      parsedGram === g
+                        ? 'bg-slate-700 text-white font-semibold'
+                        : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {g} gr
+                  </button>
+                ))}
+              </div>
+
+              {estimatedSellToday > 0 && (
+                <div className="text-[11px] bg-white border border-slate-200 rounded-lg px-3 py-2 flex items-center justify-between">
+                  <span className="text-slate-700">
+                    Estimasi Nilai Perak Hari Ini ({parsedGram}g @ {formatRupiah(activeSellPerGram)}/gr):
+                  </span>
+                  <strong className="font-mono tabular-nums text-slate-900">
+                    {formatRupiah(estimatedSellToday)}
+                  </strong>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Nilai Nominal (Rp) */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              {activeGroup === 'cash' ? 'Saldo Tabungan (Rp) *' : 'Nilai Taksiran / Nilai Beli Aset (Rp) *'}
+              {activeGroup === 'cash'
+                ? 'Saldo Tabungan (Rp) *'
+                : kategori === 'emas' || kategori === 'perak'
+                ? 'Harga Beli / Modal Awal (Rp) *'
+                : 'Nilai Taksiran / Nilai Beli Aset (Rp) *'}
             </label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-bold text-slate-400 text-sm">

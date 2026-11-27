@@ -37,6 +37,7 @@ interface JualAsetModalProps {
   onConfirmJual: (payload: JualAsetSubmitPayload) => void;
   aset: AsetTabungan | null;
   cashSavingsList: AsetTabungan[];
+  estimatedSellValue?: number;
 }
 
 export const JualAsetModal: React.FC<JualAsetModalProps> = ({
@@ -45,12 +46,16 @@ export const JualAsetModal: React.FC<JualAsetModalProps> = ({
   onConfirmJual,
   aset,
   cashSavingsList,
+  estimatedSellValue,
 }) => {
   if (!isOpen || !aset) return null;
 
+  const defaultSell =
+    estimatedSellValue && estimatedSellValue > 0 ? estimatedSellValue : aset.nominal;
+
   const [isJualSebagian, setIsJualSebagian] = useState<boolean>(false);
   const [porsiModalDijual, setPorsiModalDijual] = useState<string>(aset.nominal.toString());
-  const [hargaJual, setHargaJual] = useState<string>(aset.nominal.toString());
+  const [hargaJual, setHargaJual] = useState<string>(defaultSell.toString());
   const [tujuanHasil, setTujuanHasil] = useState<'kas' | 'tabungan'>('kas');
   const [targetTabunganId, setTargetTabunganId] = useState<string>(
     cashSavingsList[0]?.id || ''
@@ -61,16 +66,18 @@ export const JualAsetModal: React.FC<JualAsetModalProps> = ({
 
   useEffect(() => {
     if (aset) {
+      const initSell =
+        estimatedSellValue && estimatedSellValue > 0 ? estimatedSellValue : aset.nominal;
       setIsJualSebagian(false);
       setPorsiModalDijual(aset.nominal.toString());
-      setHargaJual(aset.nominal.toString());
+      setHargaJual(initSell.toString());
       setTujuanHasil('kas');
       setTargetTabunganId(cashSavingsList[0]?.id || '');
       setTanggal(getTodayDateString());
       setMetodeKas('Bank Transfer');
       setKeteranganTambahan('');
     }
-  }, [aset, isOpen, cashSavingsList]);
+  }, [aset, isOpen, cashSavingsList, estimatedSellValue]);
 
   // Clean calculations
   const parsedModal = isJualSebagian
@@ -294,6 +301,15 @@ export const JualAsetModal: React.FC<JualAsetModalProps> = ({
 
             {/* Quick Presets */}
             <div className="flex items-center gap-1.5 mt-2 overflow-x-auto no-scrollbar">
+              {estimatedSellValue && estimatedSellValue > 0 && estimatedSellValue !== aset.nominal && (
+                <button
+                  type="button"
+                  onClick={() => setHargaJual(estimatedSellValue.toString())}
+                  className="px-2 py-1 text-[11px] font-mono bg-amber-100 hover:bg-amber-200 text-amber-900 font-semibold rounded-md transition-colors cursor-pointer shrink-0"
+                >
+                  Buyback Hari Ini
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => handleQuickPreset('modal')}

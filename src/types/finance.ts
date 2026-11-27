@@ -1,6 +1,6 @@
 export type TransactionType = 'pemasukan' | 'pengeluaran';
 
-export type AsetKategori = 'tabungan' | 'deposito' | 'kas_fisik' | 'emas' | 'investasi' | 'properti' | 'lainnya';
+export type AsetKategori = 'tabungan' | 'deposito' | 'kas_fisik' | 'emas' | 'perak' | 'investasi' | 'properti' | 'lainnya';
 
 export type AsetGroupType = 'cash' | 'aset';
 
@@ -54,14 +54,41 @@ export interface KasTransaction {
   createdAt: number;
 }
 
+export type GoldBrand = 'antam' | 'ubs' | 'galeri24';
+
+export interface GoldBrandQuote {
+  brand: GoldBrand;
+  label: string;
+  buyPerGram: number;
+  sellPerGram: number;
+}
+
+export interface SilverQuote {
+  label: string;
+  buyPerGram: number;
+  sellPerGram: number;
+}
+
+export interface GoldPriceSnapshot {
+  antam: GoldBrandQuote;
+  ubs: GoldBrandQuote;
+  galeri24: GoldBrandQuote;
+  perak?: SilverQuote;
+  priceDate: string;
+  fetchedAt: number;
+  sources: { title: string; uri: string }[];
+  isManualOverride?: boolean;
+}
+
 export interface AsetTabungan {
   id: string;
-  nama: string; // contoh: "Tabungan Dana Darurat", "Emas Antam 10g", "Reksadana Bibit"
+  nama: string; // contoh: "Tabungan Dana Darurat", "Emas Antam 10g", "Perak Antam 100g", "Reksadana Bibit"
   kategori: AsetKategori;
-  nominal: number; // Nilai dalam Rupiah
+  nominal: number; // Nilai dalam Rupiah (harga beli / modal awal untuk aset emas & perak)
   institusi?: string; // contoh: "Bank BCA", "BSI", "Pegadaian", "Ajaib"
   keterangan?: string;
-  beratGram?: number; // Berat dalam gram jika aset emas / logam mulia
+  merekEmas?: GoldBrand; // 'antam' | 'ubs' | 'galeri24'
+  beratGram?: number; // Berat dalam gram jika aset emas / perak
   hargaBeliPerGram?: number; // Harga beli per gram saat perolehan
   tanggalBeli?: string; // Tanggal perolehan YYYY-MM-DD
   updatedAt: number;

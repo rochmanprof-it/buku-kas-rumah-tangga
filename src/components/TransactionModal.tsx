@@ -6,6 +6,7 @@ import {
   AsetTabungan,
   isCashSavings,
   METODE_PETTY_CASH,
+  KATEGORI_ISI_PETTY_CASH,
 } from '../types/finance';
 import { getTodayDateString, formatRupiah } from '../utils/formatters';
 
@@ -70,6 +71,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   const [keterangan, setKeterangan] = useState<string>('');
   const [metodeKas, setMetodeKas] = useState<string>(defaultMetodeKas);
   
+  // Fitur Pengeluaran Pindah ke Petty Cash (Tarik Tunai)
+  const [isKePettyCash, setIsKePettyCash] = useState<boolean>(false);
+
   // Fitur Pengeluaran Masuk ke Tabungan
   const [isMasukTabungan, setIsMasukTabungan] = useState<boolean>(false);
   const [targetAsetId, setTargetAsetId] = useState<string>('');
@@ -82,8 +86,13 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setKategori(initialData.kategori);
       setKeterangan(initialData.keterangan);
       setMetodeKas(initialData.metodeKas || 'Bank Transfer');
+
+      const isTopUp =
+        initialData.jenis === 'pengeluaran' &&
+        initialData.kategori === KATEGORI_ISI_PETTY_CASH;
+      setIsKePettyCash(isTopUp);
       
-      if (initialData.masukKeAsetId) {
+      if (!isTopUp && initialData.masukKeAsetId) {
         setIsMasukTabungan(true);
         setTargetAsetId(initialData.masukKeAsetId);
       } else {
@@ -97,6 +106,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       setKategori(defaultType === 'pemasukan' ? KATEGORI_PEMASUKAN[0] : KATEGORI_PENGELUARAN[0]);
       setKeterangan('');
       setMetodeKas(defaultMetodeKas || 'Bank Transfer');
+      setIsKePettyCash(false);
 
       if (prefilledAsetId) {
         setIsMasukTabungan(true);
@@ -122,6 +132,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
     }
     if (newType === 'pemasukan') {
       setIsMasukTabungan(false);
+      setIsKePettyCash(false);
     }
   };
 
@@ -140,17 +151,35 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       return;
     }
 
-    const selectedTargetAset = isMasukTabungan && jenis === 'pengeluaran' 
-      ? asetList.find(a => a.id === targetAsetId) 
-      : undefined;
+    const activeKePettyCash =
+      jenis === 'pengeluaran' &&
+      metodeKas !== METODE_PETTY_CASH &&
+      (isKePettyCash || kategori.trim() === KATEGORI_ISI_PETTY_CASH);
+
+    const selectedTargetAset =
+      !activeKePettyCash && isMasukTabungan && jenis === 'pengeluaran'
+        ? asetList.find(a => a.id === targetAsetId)
+        : undefined;
+
+    const finalKategori = activeKePettyCash
+      ? KATEGORI_ISI_PETTY_CASH
+      : kategori.trim() || (jenis === 'pemasukan' ? 'Pemasukan Lain' : 'Pengeluaran Lain');
+
+    const finalKeterangan =
+      keterangan.trim() ||
+      (activeKePettyCash
+        ? 'Tarik tunai dari kas operasional ke Petty Cash'
+        : selectedTargetAset
+        ? `Setor ke ${selectedTargetAset.nama}`
+        : finalKategori);
 
     const tx: KasTransaction = {
       id: initialData ? initialData.id : `tx-${Date.now()}`,
       tanggal,
       jenis,
-      kategori: kategori.trim() || (jenis === 'pemasukan' ? 'Pemasukan Lain' : 'Pengeluaran Lain'),
+      kategori: finalKategori,
       nominal: num,
-      keterangan: keterangan.trim() || (selectedTargetAset ? `Setor ke ${selectedTargetAset.nama}` : kategori.trim()),
+      keterangan: finalKeterangan,
       metodeKas,
       masukKeAsetId: selectedTargetAset ? selectedTargetAset.id : undefined,
       masukKeAsetNama: selectedTargetAset ? selectedTargetAset.nama : undefined,
@@ -274,6 +303,62 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             </div>
           </div>
 
+          {/* Fitur Khusus: Pengeluaran dari Kas Operasional ke Petty Cash */}
+          {jenis === 'pengeluaran' && !isPettyCashSelected && (
+            <div className={`border rounded-xl p-3.5 transition-all ${
+              isKePettyCash
+                ? 'bg-teal-50/80 border-teal-300 shadow-2xs'
+                : 'bg-slate-50/70 border-slate-200'
+            }`}>
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isKePettyCash}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setIsKePettyCash(checked);
+                    if (checked) {
+                      setIsMasukTabungan(false);
+                      setKategori(KATEGORI_ISI_PETTY_CASH);
+                      if (!keterangan.trim()) {
+                        setKeterangan('Tarik tunai dari kas operasional ke Petty Cash');
+                      }
+                    } else if (kategori === KATEGORI_ISI_PETTY_CASH) {
+                      setKategori(KATEGORI_PENGELUARAN[0]);
+                    }
+                  }}
+                  className="mt-0.5 w-4 h-4 text-teal-600 rounded border-slate-300 focus:ring-teal-500 cursor-pointer"
+                />
+                <div className="text-xs">
+                  <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <Banknote className="w-4 h-4 text-teal-600 shrink-0" />
+                    <span>Pindahkan ke Petty Cash (Tarik Tunai)</span>
+                  </span>
+                  <span className="text-slate-500 block mt-0.5 leading-relaxed text-[11px]">
+                    Kas rekening otomatis terpotong dan saldo Petty Cash (cash di tangan) bertambah otomatis.
+                  </span>
+                </div>
+              </label>
+
+              {isKePettyCash && parsedNominal > 0 && !isEditing && (
+                <div className="mt-2.5 pt-2.5 border-t border-teal-200/80 grid grid-cols-2 gap-2 text-[11px] bg-white/90 p-2.5 rounded-lg border border-teal-200">
+                  <div>
+                    <span className="text-slate-500 block">Kas Rekening:</span>
+                    <span className="font-mono font-bold text-rose-600 tabular-nums">
+                      {formatRupiah(saldoKasBank)} → {formatRupiah(saldoKasBank - parsedNominal)}
+                    </span>
+                  </div>
+                  <div className="border-l border-slate-200 pl-2.5">
+                    <span className="text-teal-700 font-medium block">Petty Cash:</span>
+                    <span className="font-mono font-bold text-teal-700 tabular-nums">
+                      {formatRupiah(saldoPettyCash)} → {formatRupiah(saldoPettyCash + parsedNominal)}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Fitur Khusus: Pengeluaran Masuk ke Tabungan / Aset */}
           {jenis === 'pengeluaran' && asetList.length > 0 && (
             <div className={`border rounded-xl p-3.5 transition-all ${
@@ -289,7 +374,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                     const checked = e.target.checked;
                     setIsMasukTabungan(checked);
                     if (checked) {
-                      if (!kategori || kategori === 'Belanja Makan & Dapur') {
+                      setIsKePettyCash(false);
+                      if (!kategori || kategori === 'Belanja Makan & Dapur' || kategori === KATEGORI_ISI_PETTY_CASH) {
                         setKategori('Menabung / Investasi');
                       }
                       if (!targetAsetId && asetList[0]) {
