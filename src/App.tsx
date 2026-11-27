@@ -2319,56 +2319,42 @@ export default function App() {
             {/* BAGIAN 2: ASET, LOGAM MULIA & INVESTASI (ASET BERNILAI NON-KAS)          */}
             {/* ========================================================================= */}
             {(asetFilter === 'semua' || asetFilter === 'aset') && (
-              <div className="space-y-3 pt-2">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-amber-50 text-amber-700 rounded-lg">
-                      <Coins className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                        <span>Aset, Logam Mulia & Investasi</span>
-                        <span className="text-[10px] font-semibold px-2 py-0.2 rounded-full bg-amber-100 text-amber-900">
-                          {physicalAssetsItems.length} Pos
-                        </span>
-                      </h3>
-                      <p className="text-[11px] text-slate-500">
-                        Nilai emas dihitung otomatis memakai harga buyback Antam/UBS/Galeri 24, sedangkan aset Perak memakai harga perak tersendiri.
-                      </p>
-                    </div>
+              <div className="space-y-4 pt-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">
+                      Aset, Logam Mulia & Investasi
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {physicalAssetsItems.length} pos · Estimasi total saat dijual hari ini:{' '}
+                      <strong className="font-mono tabular-nums text-slate-900">
+                        {formatRupiah(totalAsetLogamMulia)}
+                      </strong>
+                    </p>
                   </div>
 
-                  <div className="flex items-center gap-2 self-start sm:self-auto">
-                    <span className="text-xs font-mono font-bold text-amber-900 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200/60">
-                      Total Est. Jual: {formatRupiah(totalAsetLogamMulia)}
-                    </span>
-                    <button
-                      onClick={() => handleOpenCreateAset('aset')}
-                      className="text-xs font-semibold text-amber-700 hover:text-amber-800 hover:underline cursor-pointer flex items-center gap-1"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Tambah Logam Mulia / Aset</span>
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => handleOpenCreateAset('aset')}
+                    className="self-start sm:self-auto px-3.5 py-2 text-xs font-semibold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Tambah Aset / Logam Mulia</span>
+                  </button>
                 </div>
 
-                {/* Panel Harga Emas & Perak Hari Ini */}
-                <div className="bg-white border border-amber-200/90 rounded-xl p-4 shadow-xs space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-amber-950 uppercase tracking-wider">
-                          Update Harga Emas & Perak Hari Ini (Per Gram)
-                        </span>
-                        {goldPrices?.priceDate && (
-                          <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200">
-                            {goldPrices.priceDate}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Emas menggunakan <strong>Harga Buyback</strong> (Antam, UBS, Galeri 24) dan <strong>Perak</strong> dihitung terpisah dengan harga perak per gram.
-                      </p>
+                {/* Strip Referensi Harga Jual (Buyback) Hari Ini */}
+                <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+                  <div className="px-4 py-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className="text-xs font-semibold text-slate-800">
+                        Harga Jual (Buyback) Hari Ini
+                      </span>
+                      {goldPrices?.priceDate && (
+                        <>
+                          <span className="text-slate-300" aria-hidden="true">·</span>
+                          <span className="text-xs text-slate-500">{goldPrices.priceDate}</span>
+                        </>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
@@ -2376,24 +2362,24 @@ export default function App() {
                         type="button"
                         onClick={handleRefreshGoldPrices}
                         disabled={isLoadingGoldPrices}
-                        className="px-3 py-1.5 text-xs font-semibold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-60 whitespace-nowrap"
+                        className="px-2.5 py-1 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-60 whitespace-nowrap"
                       >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isLoadingGoldPrices ? 'animate-spin' : ''}`} />
-                        <span>{isLoadingGoldPrices ? 'Memperbarui...' : 'Perbarui Harga Live'}</span>
+                        <RefreshCw className={`w-3 h-3 ${isLoadingGoldPrices ? 'animate-spin' : ''}`} />
+                        <span>{isLoadingGoldPrices ? 'Memperbarui...' : 'Perbarui'}</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={handleOpenManualGoldEditor}
-                        className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                        className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
                       >
-                        {isEditingManualGold ? 'Tutup Manual' : 'Atur Manual'}
+                        {isEditingManualGold ? 'Tutup' : 'Atur Manual'}
                       </button>
                     </div>
                   </div>
 
                   {goldPriceError && (
-                    <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
+                    <div className="px-4 py-2.5 text-xs text-rose-700 bg-rose-50 border-b border-rose-100 flex items-center justify-between gap-2">
                       <span>{goldPriceError}</span>
                       <button
                         type="button"
@@ -2408,11 +2394,11 @@ export default function App() {
                   {isEditingManualGold && (
                     <form
                       onSubmit={handleSaveManualGoldPrices}
-                      className="p-3 bg-amber-50/60 border border-amber-200 rounded-xl grid grid-cols-1 sm:grid-cols-5 gap-2.5 items-end"
+                      className="p-4 bg-slate-50 border-b border-slate-200 grid grid-cols-1 sm:grid-cols-5 gap-3 items-end"
                     >
                       <div>
-                        <label className="block text-[11px] font-semibold text-amber-950 mb-1">
-                          Buyback Antam (Rp/gr)
+                        <label className="block text-xs font-medium text-slate-700 mb-1">
+                          Antam (Rp/gr)
                         </label>
                         <input
                           type="text"
@@ -2420,12 +2406,12 @@ export default function App() {
                           value={manualAntamSell}
                           onChange={(e) => setManualAntamSell(e.target.value.replace(/[^0-9]/g, ''))}
                           placeholder="2175000"
-                          className="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-amber-300 rounded-lg text-slate-900"
+                          className="w-full px-3 py-1.5 text-xs font-mono font-semibold bg-white border border-slate-300 rounded-lg text-slate-900"
                         />
                       </div>
                       <div>
-                        <label className="block text-[11px] font-semibold text-amber-950 mb-1">
-                          Buyback UBS (Rp/gr)
+                        <label className="block text-xs font-medium text-slate-700 mb-1">
+                          UBS (Rp/gr)
                         </label>
                         <input
                           type="text"
@@ -2433,12 +2419,12 @@ export default function App() {
                           value={manualUbsSell}
                           onChange={(e) => setManualUbsSell(e.target.value.replace(/[^0-9]/g, ''))}
                           placeholder="2175000"
-                          className="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-amber-300 rounded-lg text-slate-900"
+                          className="w-full px-3 py-1.5 text-xs font-mono font-semibold bg-white border border-slate-300 rounded-lg text-slate-900"
                         />
                       </div>
                       <div>
-                        <label className="block text-[11px] font-semibold text-amber-950 mb-1">
-                          Buyback Galeri 24 (Rp/gr)
+                        <label className="block text-xs font-medium text-slate-700 mb-1">
+                          Galeri 24 (Rp/gr)
                         </label>
                         <input
                           type="text"
@@ -2446,12 +2432,12 @@ export default function App() {
                           value={manualG24Sell}
                           onChange={(e) => setManualG24Sell(e.target.value.replace(/[^0-9]/g, ''))}
                           placeholder="2199000"
-                          className="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-amber-300 rounded-lg text-slate-900"
+                          className="w-full px-3 py-1.5 text-xs font-mono font-semibold bg-white border border-slate-300 rounded-lg text-slate-900"
                         />
                       </div>
                       <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                          Harga Perak (Rp/gr)
+                        <label className="block text-xs font-medium text-slate-700 mb-1">
+                          Perak (Rp/gr)
                         </label>
                         <input
                           type="text"
@@ -2459,12 +2445,12 @@ export default function App() {
                           value={manualPerakSell}
                           onChange={(e) => setManualPerakSell(e.target.value.replace(/[^0-9]/g, ''))}
                           placeholder="25500"
-                          className="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900"
+                          className="w-full px-3 py-1.5 text-xs font-mono font-semibold bg-white border border-slate-300 rounded-lg text-slate-900"
                         />
                       </div>
                       <button
                         type="submit"
-                        className="px-3.5 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg cursor-pointer transition-colors"
+                        className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg cursor-pointer transition-colors"
                       >
                         Simpan Harga
                       </button>
@@ -2472,58 +2458,44 @@ export default function App() {
                   )}
 
                   {goldPrices ? (
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                    <>
+                      <div className="grid grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
                         {([goldPrices.antam, goldPrices.ubs, goldPrices.galeri24] as const).map((q) => (
-                          <div
-                            key={q.brand}
-                            className="p-3 rounded-lg bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-2"
-                          >
-                            <div>
-                              <span className="text-[11px] font-bold text-slate-800 block">
-                                {q.label}
-                              </span>
-                              <span className="text-[10px] text-slate-500 block">
-                                Beli: <span className="font-mono tabular-nums">{formatRupiah(q.buyPerGram)}/gr</span>
-                              </span>
+                          <div key={q.brand} className="px-4 py-3 space-y-0.5">
+                            <span className="text-xs font-medium text-slate-500 block">
+                              Emas {q.label}
+                            </span>
+                            <div className="text-sm font-bold font-mono tabular-nums text-slate-900">
+                              {formatRupiah(q.sellPerGram)}
+                              <span className="text-xs font-normal text-slate-400">/gr</span>
                             </div>
-                            <div className="text-right">
-                              <span className="text-[10px] text-amber-800 font-semibold block">
-                                Est. Jual / Buyback
-                              </span>
-                              <span className="text-xs font-bold font-mono tabular-nums text-amber-950">
-                                {formatRupiah(q.sellPerGram)}/gr
-                              </span>
-                            </div>
+                            <span className="text-[11px] text-slate-400 block font-mono tabular-nums">
+                              Beli: {formatRupiah(q.buyPerGram)}
+                            </span>
                           </div>
                         ))}
 
-                        {/* Kartu Harga Perak Terpisah */}
-                        <div className="p-3 rounded-lg bg-slate-100/80 border border-slate-300/80 flex items-center justify-between gap-2">
-                          <div>
-                            <span className="text-[11px] font-bold text-slate-800 block">
-                              Perak (Silver)
-                            </span>
-                            <span className="text-[10px] text-slate-500 block">
-                              Logam Perak Murni
-                            </span>
+                        <div className="px-4 py-3 space-y-0.5">
+                          <span className="text-xs font-medium text-slate-500 block">
+                            Perak (Silver)
+                          </span>
+                          <div className="text-sm font-bold font-mono tabular-nums text-slate-900">
+                            {goldPrices.perak?.sellPerGram
+                              ? formatRupiah(goldPrices.perak.sellPerGram)
+                              : 'Belum diatur'}
+                            {goldPrices.perak?.sellPerGram ? (
+                              <span className="text-xs font-normal text-slate-400">/gr</span>
+                            ) : null}
                           </div>
-                          <div className="text-right">
-                            <span className="text-[10px] text-slate-600 font-semibold block">
-                              Harga / Gram
-                            </span>
-                            <span className="text-xs font-bold font-mono tabular-nums text-slate-900">
-                              {goldPrices.perak?.sellPerGram
-                                ? `${formatRupiah(goldPrices.perak.sellPerGram)}/gr`
-                                : 'Belum diatur'}
-                            </span>
-                          </div>
+                          <span className="text-[11px] text-slate-400 block">
+                            Harga pasar per gram
+                          </span>
                         </div>
                       </div>
 
                       {goldPrices.sources && goldPrices.sources.some((s) => s.uri) && (
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-400 pt-1">
-                          <span>Sumber data:</span>
+                        <div className="px-4 py-2 bg-slate-50/70 border-t border-slate-100 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
+                          <span>Sumber:</span>
                           {goldPrices.sources
                             .filter((s) => s.uri)
                             .slice(0, 3)
@@ -2533,197 +2505,181 @@ export default function App() {
                                 href={s.uri}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-amber-800 hover:underline"
+                                className="inline-flex items-center gap-1 text-slate-600 hover:text-slate-900 hover:underline"
                               >
-                                <span className="truncate max-w-[180px]">{s.title || s.uri}</span>
+                                <span className="truncate max-w-[200px]">{s.title || s.uri}</span>
                                 <ExternalLink className="w-2.5 h-2.5 shrink-0" />
                               </a>
                             ))}
                         </div>
                       )}
-                    </div>
+                    </>
                   ) : (
                     !isLoadingGoldPrices && (
-                      <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5">
-                        Belum ada data harga emas & perak hari ini. Klik <strong>Perbarui Harga Live</strong> atau <strong>Atur Manual</strong> untuk menghitung estimasi nilai jual aset Anda.
+                      <div className="px-4 py-3 text-xs text-slate-500">
+                        Belum ada data harga emas & perak hari ini. Klik <strong>Perbarui</strong> atau <strong>Atur Manual</strong> untuk menghitung estimasi nilai jual.
                       </div>
                     )
                   )}
                 </div>
 
                 {physicalAssetsItems.length === 0 ? (
-                  <div className="bg-white border border-dashed border-amber-200 rounded-xl p-8 text-center shadow-xs">
-                    <Coins className="w-9 h-9 text-amber-300 mx-auto mb-2" />
-                    <h4 className="text-xs font-bold text-slate-800">Belum ada pos logam mulia atau aset</h4>
-                    <p className="text-[11px] text-slate-500 mt-0.5 max-w-sm mx-auto">
-                      Catat kepemilikan emas Antam, UBS, Galeri 24, perak batangan, portofolio investasi reksadana/saham, atau properti keluarga.
+                  <div className="bg-white border border-dashed border-slate-300 rounded-xl p-8 text-center">
+                    <Coins className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                    <h4 className="text-sm font-semibold text-slate-800">Belum ada pos logam mulia atau aset</h4>
+                    <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                      Catat kepemilikan emas Antam, UBS, Galeri 24, perak batangan, investasi, atau properti keluarga.
                     </p>
                     <button
                       onClick={() => handleOpenCreateAset('aset')}
-                      className="mt-3 px-3.5 py-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors cursor-pointer"
+                      className="mt-3 px-4 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors cursor-pointer"
                     >
                       + Tambah Logam Mulia / Aset
                     </button>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {physicalAssetsItems.map((aset) => {
                       const val = assetValuations[aset.id];
                       const isPerak = val?.isSilverAsset || aset.kategori === 'perak';
                       const isEmas = !isPerak && aset.kategori === 'emas';
-                      const isInvestasi = aset.kategori === 'investasi';
-                      const isProperti = aset.kategori === 'properti';
-                      const displayIconKategori = isPerak ? 'perak' : aset.kategori;
+                      const hasLiveRate = isEmas
+                        ? Boolean(val?.isLiveGoldEstimate)
+                        : isPerak
+                        ? Boolean(val?.isLiveSilverEstimate)
+                        : false;
+
+                      const subtitleParts: string[] = [];
+                      if (isPerak) {
+                        subtitleParts.push('Perak / Silver');
+                      } else if (isEmas && val?.merekLabel) {
+                        subtitleParts.push(`Emas ${val.merekLabel}`);
+                      } else {
+                        subtitleParts.push(getAsetKategoriLabel(aset.kategori));
+                      }
+                      if ((isEmas || isPerak) && val?.beratGram && val.beratGram > 0) {
+                        subtitleParts.push(`${val.beratGram} gr`);
+                      }
+                      if (aset.institusi) {
+                        subtitleParts.push(aset.institusi);
+                      }
 
                       return (
-                        <div 
+                        <div
                           key={aset.id}
-                          className={`bg-white rounded-xl p-4 shadow-xs hover:shadow-sm transition-all flex flex-col justify-between ${
-                            isPerak
-                              ? 'border border-slate-200 hover:border-slate-400 bg-gradient-to-br from-white to-slate-50/60'
-                              : 'border border-amber-100/90 hover:border-amber-300 bg-gradient-to-br from-white to-amber-50/20'
-                          }`}
+                          className="bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-5 shadow-xs transition-colors flex flex-col justify-between gap-4"
                         >
-                          <div>
-                            <div className="flex items-start justify-between gap-3 mb-2">
-                              <div className="flex items-center gap-2.5">
-                                <div className={`p-2 rounded-xl border ${
-                                  isPerak
-                                    ? 'bg-slate-100 text-slate-600 border-slate-200'
-                                    : 'bg-amber-50 text-amber-600 border-amber-100'
-                                }`}>
-                                  {getAsetIcon(displayIconKategori)}
-                                </div>
-                                <div>
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <h4 className="text-sm font-bold text-slate-900 leading-snug">{aset.nama}</h4>
-                                    <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded border ${
-                                      isPerak
-                                        ? 'bg-slate-100 text-slate-700 border-slate-300'
-                                        : isEmas 
-                                        ? 'bg-amber-50 text-amber-800 border-amber-200' 
-                                        : isInvestasi 
-                                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
-                                          : isProperti 
-                                            ? 'bg-purple-50 text-purple-800 border-purple-200' 
-                                            : 'bg-slate-50 text-slate-700 border-slate-200'
-                                    }`}>
-                                      {isPerak
-                                        ? 'Perak / Silver'
-                                        : isEmas && val?.merekLabel
-                                        ? `Emas ${val.merekLabel}`
-                                        : getAsetKategoriLabel(aset.kategori)}
-                                    </span>
-                                    {(isEmas || isPerak) && val?.beratGram && val.beratGram > 0 ? (
-                                      <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-200">
-                                        {val.beratGram} gr
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                  <span className="text-[11px] text-slate-400 block mt-0.5">
-                                    Tempat Simpan: <strong>{aset.institusi || 'Brankas Pribadi'}</strong>
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Action CRUD: Jual, Edit & Delete */}
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={() => handleOpenJualAset(aset)}
-                                  title="Jual aset ini (hitung untung/rugi)"
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
-                                >
-                                  <Tag className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleOpenEditAset(aset)}
-                                  title="Ubah data aset"
-                                  className="p-1.5 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded-md transition-colors cursor-pointer"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => setDeletingAsetId(aset.id)}
-                                  title="Hapus aset"
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                          {/* Header Kartu: Judul & Metadata Bersih Tanpa Pill */}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <h4 className="text-base font-bold text-slate-900 leading-snug truncate">
+                                {aset.nama}
+                              </h4>
+                              <p className="text-xs text-slate-500 mt-0.5 truncate">
+                                {subtitleParts.join(' · ')}
+                              </p>
                             </div>
 
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => handleOpenEditAset(aset)}
+                                title="Ubah data aset"
+                                className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => setDeletingAsetId(aset.id)}
+                                title="Hapus aset"
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Nilai Utama: Estimasi Jual vs Modal Beli */}
+                          <div className="space-y-3">
+                            <div>
+                              <span className="text-xs text-slate-500 block">
+                                {hasLiveRate
+                                  ? 'Estimasi Jual Hari Ini'
+                                  : isPerak
+                                  ? 'Nilai Aset Perak'
+                                  : isEmas
+                                  ? 'Nilai Estimasi Emas'
+                                  : 'Nilai Taksiran'}
+                              </span>
+                              <div className="text-2xl font-bold font-mono tabular-nums text-slate-900 tracking-tight mt-0.5">
+                                {formatRupiah(val?.displayNominal ?? aset.nominal)}
+                              </div>
+                              {hasLiveRate && val?.beratGram && val?.sellPerGram && (
+                                <span className="text-xs font-mono text-slate-400 block mt-0.5">
+                                  {val.beratGram} gr × {formatRupiah(val.sellPerGram)}/gr
+                                </span>
+                              )}
+                            </div>
+
+                            {(isEmas || isPerak) && (
+                              <div className="pt-3 border-t border-slate-100 grid grid-cols-2 gap-3 text-xs">
+                                <div>
+                                  <span className="text-slate-400 block">Modal Beli</span>
+                                  <span className="font-mono tabular-nums font-semibold text-slate-700 mt-0.5 block">
+                                    {formatRupiah(aset.nominal)}
+                                  </span>
+                                </div>
+
+                                <div>
+                                  <span className="text-slate-400 block">Selisih Hari Ini</span>
+                                  {hasLiveRate && val ? (
+                                    <span
+                                      className={`font-mono tabular-nums font-semibold mt-0.5 block ${
+                                        val.unrealizedPnL >= 0 ? 'text-emerald-700' : 'text-rose-600'
+                                      }`}
+                                    >
+                                      {val.unrealizedPnL >= 0 ? '+' : '-'}
+                                      {formatRupiah(Math.abs(val.unrealizedPnL))} ({val.unrealizedPnL >= 0 ? '+' : ''}
+                                      {val.unrealizedPct.toFixed(1)}%)
+                                    </span>
+                                  ) : val?.needsGramInput ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenEditAset(aset)}
+                                      className="font-semibold text-amber-700 hover:underline cursor-pointer mt-0.5 block text-left"
+                                    >
+                                      {isPerak ? 'Isi berat gram →' : 'Isi merek & gram →'}
+                                    </button>
+                                  ) : (
+                                    <span className="text-slate-400 mt-0.5 block">-</span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
                             {aset.keterangan && (
-                              <p className="text-xs text-slate-600 bg-amber-50/50 p-2 rounded-lg my-1.5 border border-amber-100/70 leading-relaxed text-[11px]">
-                                🪙 {aset.keterangan}
+                              <p className="text-xs text-slate-500 leading-relaxed">
+                                {aset.keterangan}
                               </p>
                             )}
                           </div>
 
-                          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
-                            <div>
-                              <span className="text-[10px] text-slate-500 block">
-                                {isEmas && val?.isLiveGoldEstimate
-                                  ? `Estimasi Jual Hari Ini (${val.beratGram}g @ ${formatRupiah(val.sellPerGram || 0)}/gr):`
-                                  : isPerak && val?.isLiveSilverEstimate
-                                  ? `Estimasi Perak Hari Ini (${val.beratGram}g @ ${formatRupiah(val.sellPerGram || 0)}/gr):`
-                                  : isPerak
-                                  ? 'Nilai Aset Perak:'
-                                  : isEmas
-                                  ? 'Nilai Estimasi Emas:'
-                                  : 'Nilai Taksiran / Pasar:'}
-                              </span>
-                              <div className={`text-lg font-bold font-mono tabular-nums ${isPerak ? 'text-slate-900' : 'text-amber-900'}`}>
-                                {formatRupiah(val?.displayNominal ?? aset.nominal)}
-                              </div>
+                          {/* Aksi Kartu */}
+                          <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleOpenCreateTx('pengeluaran', aset.id)}
+                              className="px-3.5 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                            >
+                              + Tambah
+                            </button>
 
-                              {(isEmas || isPerak) && (
-                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] mt-0.5">
-                                  <span className="text-slate-500">
-                                    Modal Beli: <strong className="font-mono text-slate-700">{formatRupiah(aset.nominal)}</strong>
-                                  </span>
-                                  {(val?.isLiveGoldEstimate || val?.isLiveSilverEstimate) && (
-                                    <span
-                                      className={`font-mono font-bold ${
-                                        val.unrealizedPnL >= 0 ? 'text-emerald-700' : 'text-rose-600'
-                                      }`}
-                                    >
-                                      ({val.unrealizedPnL >= 0 ? '+' : '-'}
-                                      {formatRupiah(Math.abs(val.unrealizedPnL))} / {val.unrealizedPnL >= 0 ? '+' : ''}
-                                      {val.unrealizedPct.toFixed(1)}%)
-                                    </span>
-                                  )}
-                                  {val?.needsGramInput && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenEditAset(aset)}
-                                      className="font-semibold text-amber-700 hover:underline cursor-pointer"
-                                    >
-                                      {isPerak ? 'Atur berat (gram) →' : 'Atur gram & merek →'}
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Tombol Aksi: Jual Aset & Tambah dari Kas */}
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <button
-                                onClick={() => handleOpenJualAset(aset)}
-                                className="px-3 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                                title="Jual aset ini, catat harga jual, realisasi untung/rugi, dan masukkan ke kas/tabungan"
-                              >
-                                <Tag className="w-3.5 h-3.5 text-rose-600" />
-                                <span>Jual Aset</span>
-                              </button>
-
-                              <button
-                                onClick={() => handleOpenCreateTx('pengeluaran', aset.id)}
-                                className="px-3 py-1.5 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                              >
-                                <ArrowRight className="w-3.5 h-3.5 text-amber-700" />
-                                <span>+ Tambah</span>
-                              </button>
-                            </div>
+                            <button
+                              onClick={() => handleOpenJualAset(aset)}
+                              className="px-3.5 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                              title="Jual aset ini, catat harga jual, realisasi untung/rugi, dan masukkan ke kas/tabungan"
+                            >
+                              <Tag className="w-3.5 h-3.5" />
+                              <span>Jual</span>
+                            </button>
                           </div>
                         </div>
                       );
